@@ -6,17 +6,11 @@ function App() {
 
   useEffect(() => {
     const game = createPhaserGame('game-container')
-
-    return () => {
-      game.destroy(true)
-    }
+    return () => game.destroy(true)
   }, [])
 
   return (
-    <div>
-      <h1>RPG Game</h1>
-      <div id="game-container" ref={containerRef}></div>
-    </div>
+    <div id="game-container" ref={containerRef} style={{ width: '100vw', height: '100vh' }} />
   )
 }
 
