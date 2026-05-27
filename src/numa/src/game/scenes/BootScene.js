@@ -3,10 +3,11 @@ import {
   TILE_SIZE,
   TILE_COLORS,
   BLOCKED_TILES,
-  TEST_MAP,
   MAP_WIDTH,
   MAP_HEIGHT,
 } from "../config";
+import { generateMap, findSafeSpawn } from "../systems/MapGenerator";
+import { emit } from '../EventBus'
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -18,23 +19,32 @@ export class BootScene extends Phaser.Scene {
     this.targetWorldX = 0;
     this.targetWorldY = 0;
     this.movePath = [];
+    this.mapData = [];
   }
 
   create() {
+    const seed = Math.random();
+    this.mapData = generateMap(MAP_WIDTH, MAP_HEIGHT, seed);
+
+    const spawn = findSafeSpawn(this.mapData, MAP_WIDTH, MAP_HEIGHT);
+    this.tileX = spawn.col;
+    this.tileY = spawn.row;
+
     this.drawMap();
     this.createPlayer();
     this.setupInput();
 
-    const mapWidth = MAP_WIDTH * TILE_SIZE;
-    const mapHeight = MAP_HEIGHT * TILE_SIZE;
-    this.cameras.main.setBounds(0, 0, mapWidth, mapHeight);
+    const mapPixelWidth = MAP_WIDTH * TILE_SIZE;
+    const mapPixelHeight = MAP_HEIGHT * TILE_SIZE;
+    this.cameras.main.setBounds(0, 0, mapPixelWidth, mapPixelHeight);
+    this.cameras.main.setZoom(2.5);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
   }
 
   drawMap() {
     for (let row = 0; row < MAP_HEIGHT; row++) {
       for (let col = 0; col < MAP_WIDTH; col++) {
-        const tileType = TEST_MAP[row][col];
+        const tileType = this.mapData[row][col];
         const color = TILE_COLORS[tileType];
         this.add.rectangle(
           col * TILE_SIZE + TILE_SIZE / 2,
@@ -71,8 +81,9 @@ export class BootScene extends Phaser.Scene {
     });
 
     this.input.on("pointerdown", (pointer) => {
-      const col = Math.floor(pointer.x / TILE_SIZE);
-      const row = Math.floor(pointer.y / TILE_SIZE);
+      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const col = Math.floor(worldPoint.x / TILE_SIZE);
+      const row = Math.floor(worldPoint.y / TILE_SIZE);
       this.setMoveTarget(col, row);
     });
   }
@@ -86,7 +97,7 @@ export class BootScene extends Phaser.Scene {
   isWalkable(col, row) {
     if (col < 0 || row < 0 || col >= MAP_WIDTH || row >= MAP_HEIGHT)
       return false;
-    return !BLOCKED_TILES.includes(TEST_MAP[row][col]);
+    return !BLOCKED_TILES.includes(this.mapData[row][col]);
   }
 
   /**
@@ -178,6 +189,9 @@ export class BootScene extends Phaser.Scene {
 
     this.tileX = newCol;
     this.tileY = newRow;
+
+    emit('player:moved', { col: newCol, row: newRow })
+    
     this.isMoving = true;
 
     const world = this.tileToWorld(newCol, newRow);
