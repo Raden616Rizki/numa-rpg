@@ -7,7 +7,7 @@ import {
   MAP_HEIGHT,
 } from "../config";
 import { generateMap, findSafeSpawn } from "../systems/MapGenerator";
-import { emit } from "../EventBus";
+import { emit, on } from "../EventBus";
 import { rollEncounter, getMonster } from "../systems/EncounterSystem";
 
 export class BootScene extends Phaser.Scene {
@@ -21,6 +21,7 @@ export class BootScene extends Phaser.Scene {
     this.targetWorldY = 0;
     this.movePath = [];
     this.mapData = [];
+    this.inBattle = false;
   }
 
   create() {
@@ -40,6 +41,10 @@ export class BootScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, mapPixelWidth, mapPixelHeight);
     this.cameras.main.setZoom(2.5);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+
+    on("battle:end", () => {
+      this.inBattle = false;
+    });
   }
 
   drawMap() {
@@ -187,10 +192,9 @@ export class BootScene extends Phaser.Scene {
     emit("player:moved", { col: newCol, row: newRow });
 
     const tileType = this.mapData[newRow][newCol];
-    console.log("stepping on tile:", tileType);
-    if (rollEncounter(tileType)) {
+    if (!this.inBattle && rollEncounter(tileType)) {
+      this.inBattle = true;
       const monster = getMonster(tileType);
-      console.log("encounter:", monster);
       emit("encounter:start", { monster });
     }
 
@@ -208,6 +212,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   update() {
+    if (this.inBattle) return;
     if (this.isMoving) return;
 
     let dx = 0;
