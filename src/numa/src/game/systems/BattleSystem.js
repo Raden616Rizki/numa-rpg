@@ -72,3 +72,26 @@ export function getMonsterAction(monster) {
   }
   return { type: "defend", message: `${monster.name} bersiap bertahan!` };
 }
+
+/**
+ * Calculates EXP needed to reach next level
+ * @param {number} level
+ * @returns {number}
+ */
+export function expToNextLevel(level) {
+  return Math.floor(100 * Math.pow(1.4, level - 1));
+}
+
+/**
+ * Calculates stat gains on level up
+ * @param {number} newLevel
+ * @returns {{ hp: number, mp: number, atk: number, def: number }}
+ */
+export function calcLevelUpStats(newLevel) {
+  return {
+    hp: 10 + Math.floor(Math.random() * 6),
+    mp: 5 + Math.floor(Math.random() * 4),
+    atk: 2 + Math.floor(Math.random() * 3),
+    def: 1 + Math.floor(Math.random() * 2),
+  };
+}

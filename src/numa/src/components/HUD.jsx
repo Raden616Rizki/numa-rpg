@@ -2,18 +2,16 @@ import { GiSwordman } from 'react-icons/gi'
 import { FaHeart, FaStar, FaCoins } from 'react-icons/fa'
 import { GiWaterDrop } from 'react-icons/gi'
 
-export default function HUD({ player }) {
+export default function HUD({ player, expToNextLevel }) {
+  const expNeeded = expToNextLevel(player.level)
+  const expPct = Math.max(0, player.exp / expNeeded * 100)
+
   return (
     <div style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
+      position: 'absolute', top: 0, left: 0, right: 0,
       padding: '8px 12px',
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '6px 16px',
-      alignItems: 'center',
+      display: 'flex', flexWrap: 'wrap',
+      gap: '6px 16px', alignItems: 'center',
       background: 'rgba(0,0,0,0.55)',
       pointerEvents: 'none',
     }}>
@@ -23,21 +21,9 @@ export default function HUD({ player }) {
         <span style={{ color: '#e8b84b', fontSize: 12 }}>{player.name}</span>
       </div>
 
-      <StatBar
-        label="HP"
-        value={player.hp}
-        max={player.maxHp}
-        color="#e05555"
-        icon={<FaHeart color="#e05555" size={10} />}
-      />
-
-      <StatBar
-        label="MP"
-        value={player.mp}
-        max={player.maxMp}
-        color="#4488dd"
-        icon={<GiWaterDrop color="#4488dd" size={10} />}
-      />
+      <StatBar label="HP" value={player.hp} max={player.maxHp} color="#e05555" icon={<FaHeart color="#e05555" size={10} />} />
+      <StatBar label="MP" value={player.mp} max={player.maxMp} color="#4488dd" icon={<GiWaterDrop color="#4488dd" size={10} />} />
+      <StatBar label="EXP" value={player.exp} max={expNeeded} color="#aacc44" icon={<FaStar color="#aacc44" size={10} />} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
