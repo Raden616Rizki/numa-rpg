@@ -7,7 +7,8 @@ import {
   MAP_HEIGHT,
 } from "../config";
 import { generateMap, findSafeSpawn } from "../systems/MapGenerator";
-import { emit } from '../EventBus'
+import { emit } from "../EventBus";
+import { rollEncounter, getMonster } from "../systems/EncounterSystem";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -114,65 +115,57 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
-   * Finds a simple path from current tile to target tile
-   * using Manhattan movement (no diagonal)
+   * Finds shortest path to target using BFS, avoids blocked tiles
    * @param {number} targetCol
    * @param {number} targetRow
    */
   setMoveTarget(targetCol, targetRow) {
     if (!this.isWalkable(targetCol, targetRow)) return;
+    if (targetCol === this.tileX && targetRow === this.tileY) return;
 
-    const path = [];
-    let col = this.tileX;
-    let row = this.tileY;
+    const queue = [{ col: this.tileX, row: this.tileY, path: [] }];
+    const visited = new Set();
+    visited.add(`${this.tileX},${this.tileY}`);
 
-    while (col !== targetCol || row !== targetRow) {
-      const diffCol = targetCol - col;
-      const diffRow = targetRow - row;
+    const directions = [
+      { dc: 0, dr: -1 },
+      { dc: 0, dr: 1 },
+      { dc: -1, dr: 0 },
+      { dc: 1, dr: 0 },
+    ];
 
-      if (Math.abs(diffCol) >= Math.abs(diffRow)) {
-        const nextCol = col + Math.sign(diffCol);
-        if (this.isWalkable(nextCol, row)) {
-          col = nextCol;
-        } else if (this.isWalkable(col, row + Math.sign(diffRow))) {
-          row = row + Math.sign(diffRow);
-        } else {
-          break;
+    while (queue.length > 0) {
+      const current = queue.shift();
+
+      for (const dir of directions) {
+        const nextCol = current.col + dir.dc;
+        const nextRow = current.row + dir.dr;
+        const key = `${nextCol},${nextRow}`;
+
+        if (visited.has(key)) continue;
+        if (!this.isWalkable(nextCol, nextRow)) continue;
+
+        visited.add(key);
+        const newPath = [...current.path, { col: nextCol, row: nextRow }];
+
+        if (nextCol === targetCol && nextRow === targetRow) {
+          this.movePath = newPath;
+          return;
         }
-      } else {
-        const nextRow = row + Math.sign(diffRow);
-        if (this.isWalkable(col, nextRow)) {
-          row = nextRow;
-        } else if (this.isWalkable(col + Math.sign(diffCol), row)) {
-          col = col + Math.sign(diffCol);
-        } else {
-          break;
-        }
+
+        queue.push({ col: nextCol, row: nextRow, path: newPath });
+
+        if (visited.size > 2048) break;
       }
-
-      path.push({ col, row });
-
-      if (path.length > 100) break;
     }
-
-    this.movePath = path;
   }
 
   /**
-   * Rotates the player triangle to face a direction
+   * Flips or orients the player triangle to face a direction without rotation animation
    * @param {'up'|'down'|'left'|'right'} direction
    */
   setFacing(direction) {
-    if (this.facing === direction) return;
     this.facing = direction;
-
-    const angles = { down: 0, up: 180, right: -90, left: 90 };
-    this.tweens.add({
-      targets: this.player,
-      angle: angles[direction],
-      duration: 80,
-      ease: "Linear",
-    });
   }
 
   /**
@@ -189,15 +182,19 @@ export class BootScene extends Phaser.Scene {
 
     this.tileX = newCol;
     this.tileY = newRow;
-
-    emit('player:moved', { col: newCol, row: newRow })
-    
     this.isMoving = true;
 
-    const world = this.tileToWorld(newCol, newRow);
-    this.targetWorldX = world.x;
-    this.targetWorldY = world.y;
+    emit("player:moved", { col: newCol, row: newRow });
 
+    const tileType = this.mapData[newRow][newCol];
+    console.log("stepping on tile:", tileType);
+    if (rollEncounter(tileType)) {
+      const monster = getMonster(tileType);
+      console.log("encounter:", monster);
+      emit("encounter:start", { monster });
+    }
+
+    const world = this.tileToWorld(newCol, newRow);
     this.tweens.add({
       targets: this.player,
       x: world.x,

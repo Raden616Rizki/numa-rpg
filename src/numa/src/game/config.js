@@ -21,3 +21,12 @@ export const TILE_COLORS = {
 };
 
 export const BLOCKED_TILES = [TILES.WATER, TILES.DENSE_FOREST, TILES.STONE];
+
+export const ENCOUNTER_RATE = {
+  [TILES.GRASS]: 0.3,
+  [TILES.FOREST]: 0.5,
+  [TILES.DENSE_FOREST]: 0,
+  [TILES.DIRT]: 0.2,
+  [TILES.STONE]: 0,
+  [TILES.WATER]: 0,
+};

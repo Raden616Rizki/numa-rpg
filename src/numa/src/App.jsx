@@ -17,16 +17,23 @@ function App() {
 
   useEffect(() => {
     const game = createPhaserGame('game-container')
-    return () => game.destroy(true)
-  }, [])
 
-  useEffect(() => {
     const onPlayerMoved = (data) => {
       console.log('player moved to', data.col, data.row)
     }
 
+    const onEncounter = (data) => {
+      console.log('encounter!', data.monster)
+    }
+
     on('player:moved', onPlayerMoved)
-    return () => off('player:moved', onPlayerMoved)
+    on('encounter:start', onEncounter)
+
+    return () => {
+      off('player:moved', onPlayerMoved)
+      off('encounter:start', onEncounter)
+      game.destroy(true)
+    }
   }, [])
 
   return (

@@ -9,30 +9,44 @@ export default function HUD({ player }) {
       top: 0,
       left: 0,
       right: 0,
-      padding: '10px 14px',
+      padding: '8px 12px',
       display: 'flex',
-      gap: 16,
+      flexWrap: 'wrap',
+      gap: '6px 16px',
       alignItems: 'center',
       background: 'rgba(0,0,0,0.55)',
       pointerEvents: 'none',
     }}>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <GiSwordman color="#e8b84b" size={18} />
-        <span style={{ color: '#e8b84b', fontSize: 13 }}>{player.name}</span>
+        <GiSwordman color="#e8b84b" size={16} />
+        <span style={{ color: '#e8b84b', fontSize: 12 }}>{player.name}</span>
       </div>
 
-      <StatBar label="HP" value={player.hp} max={player.maxHp} color="#e05555" icon={<FaHeart color="#e05555" size={11} />} />
-      <StatBar label="MP" value={player.mp} max={player.maxMp} color="#4488dd" icon={<GiWaterDrop color="#4488dd" size={11} />} />
+      <StatBar
+        label="HP"
+        value={player.hp}
+        max={player.maxHp}
+        color="#e05555"
+        icon={<FaHeart color="#e05555" size={10} />}
+      />
 
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <FaStar color="#e8b84b" size={12} />
-          <span style={{ color: '#aaa', fontSize: 12 }}>Lv.{player.level}</span>
+      <StatBar
+        label="MP"
+        value={player.mp}
+        max={player.maxMp}
+        color="#4488dd"
+        icon={<GiWaterDrop color="#4488dd" size={10} />}
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <FaStar color="#e8b84b" size={11} />
+          <span style={{ color: '#aaa', fontSize: 11 }}>Lv.{player.level}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <FaCoins color="#e8b84b" size={12} />
-          <span style={{ color: '#e8b84b', fontSize: 12 }}>{player.gold}G</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <FaCoins color="#e8b84b" size={11} />
+          <span style={{ color: '#e8b84b', fontSize: 11 }}>{player.gold}G</span>
         </div>
       </div>
 
@@ -43,12 +57,12 @@ export default function HUD({ player }) {
 function StatBar({ label, value, max, color, icon }) {
   const pct = Math.max(0, value / max * 100)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
       {icon}
-      <span style={{ color, fontSize: 11, width: 24 }}>{label}</span>
+      <span style={{ color, fontSize: 10, width: 20 }}>{label}</span>
       <div style={{
-        width: 80,
-        height: 8,
+        width: 70,
+        height: 7,
         background: '#222',
         borderRadius: 4,
         overflow: 'hidden',
