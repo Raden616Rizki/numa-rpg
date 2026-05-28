@@ -3,42 +3,32 @@ import {
   TILE_SIZE,
   TILE_COLORS,
   BLOCKED_TILES,
-  MAP_WIDTH,
-  MAP_HEIGHT,
+  CHUNK_SIZE,
+  RENDER_DISTANCE,
 } from "../config";
-import { generateMap, findSafeSpawn } from "../systems/MapGenerator";
-import { emit, on } from "../EventBus";
+import { generateChunk, getTileAt } from "../systems/MapGenerator";
 import { rollEncounter, getMonster } from "../systems/EncounterSystem";
+import { emit, on } from "../EventBus";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: "BootScene" });
-    this.tileX = 10;
-    this.tileY = 7;
+    this.tileX = 0;
+    this.tileY = 0;
     this.facing = "down";
     this.isMoving = false;
-    this.targetWorldX = 0;
-    this.targetWorldY = 0;
-    this.movePath = [];
-    this.mapData = [];
     this.inBattle = false;
+    this.movePath = [];
+    this.chunkCache = new Map(); // key: "cx,cy" → tiles[][]
+    this.chunkObjects = new Map(); // key: "cx,cy" → Phaser Graphics
   }
 
   create() {
-    const seed = Math.random();
-    this.mapData = generateMap(MAP_WIDTH, MAP_HEIGHT, seed);
-
-    const spawn = findSafeSpawn(this.mapData, MAP_WIDTH, MAP_HEIGHT);
-    this.tileX = spawn.col;
-    this.tileY = spawn.row;
-
-    this.drawMap();
+    this.findSafeSpawn();
+    this.updateChunks();
     this.createPlayer();
     this.setupInput();
 
-    const mapPixelWidth = MAP_WIDTH * TILE_SIZE;
-    const mapPixelHeight = MAP_HEIGHT * TILE_SIZE;
-    this.cameras.main.setBounds(0, 0, mapPixelWidth, mapPixelHeight);
     this.cameras.main.setZoom(2.5);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
@@ -47,36 +37,105 @@ export class BootScene extends Phaser.Scene {
     });
   }
 
-  drawMap() {
-    for (let row = 0; row < MAP_HEIGHT; row++) {
-      for (let col = 0; col < MAP_WIDTH; col++) {
-        const tileType = this.mapData[row][col];
-        const color = TILE_COLORS[tileType];
-        this.add.rectangle(
-          col * TILE_SIZE + TILE_SIZE / 2,
-          row * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE,
-          TILE_SIZE,
-          color,
-        );
+  /** Finds a safe GRASS or DIRT spawn tile near world origin */
+  findSafeSpawn() {
+    for (let radius = 0; radius < 50; radius++) {
+      for (let row = -radius; row <= radius; row++) {
+        for (let col = -radius; col <= radius; col++) {
+          const tile = getTileAt(col, row, this.chunkCache);
+          if (tile === 1 || tile === 4) {
+            this.tileX = col;
+            this.tileY = row;
+            return;
+          }
+        }
       }
     }
   }
 
+  /**
+   * Renders a single chunk as a Graphics object
+   * @param {number} chunkX
+   * @param {number} chunkY
+   */
+  renderChunk(chunkX, chunkY) {
+    const key = `${chunkX},${chunkY}`;
+    if (this.chunkObjects.has(key)) return;
+
+    const tiles = this.chunkCache.get(key) ?? generateChunk(chunkX, chunkY);
+    this.chunkCache.set(key, tiles);
+
+    const gfx = this.add.graphics();
+    const originX = chunkX * CHUNK_SIZE * TILE_SIZE;
+    const originY = chunkY * CHUNK_SIZE * TILE_SIZE;
+
+    for (let row = 0; row < CHUNK_SIZE; row++) {
+      for (let col = 0; col < CHUNK_SIZE; col++) {
+        const tileType = tiles[row][col];
+        const color = TILE_COLORS[tileType];
+        gfx.fillStyle(color, 1);
+        gfx.fillRect(
+          originX + col * TILE_SIZE,
+          originY + row * TILE_SIZE,
+          TILE_SIZE,
+          TILE_SIZE,
+        );
+      }
+    }
+
+    gfx.setDepth(0);
+    this.chunkObjects.set(key, gfx);
+  }
+
+  /**
+   * Destroys chunks that are too far from player
+   * @param {number} playerChunkX
+   * @param {number} playerChunkY
+   */
+  unloadFarChunks(playerChunkX, playerChunkY) {
+    for (const [key, gfx] of this.chunkObjects.entries()) {
+      const [cx, cy] = key.split(",").map(Number);
+      const dist = Math.max(
+        Math.abs(cx - playerChunkX),
+        Math.abs(cy - playerChunkY),
+      );
+      if (dist > RENDER_DISTANCE + 1) {
+        gfx.destroy();
+        this.chunkObjects.delete(key);
+        this.chunkCache.delete(key);
+      }
+    }
+  }
+
+  /** Loads and renders all chunks within RENDER_DISTANCE of player */
+  updateChunks() {
+    const playerChunkX = Math.floor(this.tileX / CHUNK_SIZE);
+    const playerChunkY = Math.floor(this.tileY / CHUNK_SIZE);
+
+    for (let dy = -RENDER_DISTANCE; dy <= RENDER_DISTANCE; dy++) {
+      for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
+        this.renderChunk(playerChunkX + dx, playerChunkY + dy);
+      }
+    }
+
+    this.unloadFarChunks(playerChunkX, playerChunkY);
+  }
+
   createPlayer() {
-    this.targetWorldX = this.tileX * TILE_SIZE + TILE_SIZE / 2;
-    this.targetWorldY = this.tileY * TILE_SIZE + TILE_SIZE / 2;
+    const px = this.tileX * TILE_SIZE + TILE_SIZE / 2;
+    const py = this.tileY * TILE_SIZE + TILE_SIZE / 2;
 
     this.player = this.add.rectangle(
-      this.targetWorldX,
-      this.targetWorldY,
+      px,
+      py,
       TILE_SIZE - 2,
       TILE_SIZE - 2,
       0x4488ff,
     );
+    this.player.setDepth(10);
   }
 
-  /** Sets up keyboard and pointer (click/tap) input */
+  /** Sets up keyboard and pointer input */
   setupInput() {
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasd = this.input.keyboard.addKeys({
@@ -95,19 +154,16 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
-   * Checks if a tile position is walkable
    * @param {number} col
    * @param {number} row
    * @returns {boolean}
    */
   isWalkable(col, row) {
-    if (col < 0 || row < 0 || col >= MAP_WIDTH || row >= MAP_HEIGHT)
-      return false;
-    return !BLOCKED_TILES.includes(this.mapData[row][col]);
+    const tile = getTileAt(col, row, this.chunkCache);
+    return !BLOCKED_TILES.includes(tile);
   }
 
   /**
-   * Converts tile position to world pixel position (center of tile)
    * @param {number} col
    * @param {number} row
    * @returns {{ x: number, y: number }}
@@ -120,7 +176,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
-   * Finds shortest path to target using BFS, avoids blocked tiles
+   * Finds shortest path to target using BFS
    * @param {number} targetCol
    * @param {number} targetRow
    */
@@ -132,7 +188,7 @@ export class BootScene extends Phaser.Scene {
     const visited = new Set();
     visited.add(`${this.tileX},${this.tileY}`);
 
-    const directions = [
+    const dirs = [
       { dc: 0, dr: -1 },
       { dc: 0, dr: 1 },
       { dc: -1, dr: 0 },
@@ -141,43 +197,27 @@ export class BootScene extends Phaser.Scene {
 
     while (queue.length > 0) {
       const current = queue.shift();
-
-      for (const dir of directions) {
+      for (const dir of dirs) {
         const nextCol = current.col + dir.dc;
         const nextRow = current.row + dir.dr;
         const key = `${nextCol},${nextRow}`;
-
         if (visited.has(key)) continue;
         if (!this.isWalkable(nextCol, nextRow)) continue;
-
         visited.add(key);
         const newPath = [...current.path, { col: nextCol, row: nextRow }];
-
         if (nextCol === targetCol && nextRow === targetRow) {
           this.movePath = newPath;
           return;
         }
-
         queue.push({ col: nextCol, row: nextRow, path: newPath });
-
         if (visited.size > 2048) break;
       }
     }
   }
 
   /**
-   * Flips or orients the player triangle to face a direction without rotation animation
-   * @param {'up'|'down'|'left'|'right'} direction
-   */
-  setFacing(direction) {
-    this.facing = direction;
-  }
-
-  /**
-   * Steps player one tile toward direction, updates tileX/tileY
-   * and animates visual position
-   * @param {number} dx - column delta (-1, 0, 1)
-   * @param {number} dy - row delta (-1, 0, 1)
+   * @param {number} dx
+   * @param {number} dy
    */
   stepPlayer(dx, dy) {
     const newCol = this.tileX + dx;
@@ -191,11 +231,10 @@ export class BootScene extends Phaser.Scene {
 
     emit("player:moved", { col: newCol, row: newRow });
 
-    const tileType = this.mapData[newRow][newCol];
+    const tileType = getTileAt(newCol, newRow, this.chunkCache);
     if (!this.inBattle && rollEncounter(tileType)) {
       this.inBattle = true;
-      const monster = getMonster(tileType);
-      emit("encounter:start", { monster });
+      emit("encounter:start", { monster: getMonster(tileType) });
     }
 
     const world = this.tileToWorld(newCol, newRow);
@@ -207,30 +246,21 @@ export class BootScene extends Phaser.Scene {
       ease: "Linear",
       onComplete: () => {
         this.isMoving = false;
+        this.updateChunks();
       },
     });
   }
 
   update() {
-    if (this.inBattle) return;
-    if (this.isMoving) return;
+    if (this.inBattle || this.isMoving) return;
 
-    let dx = 0;
-    let dy = 0;
+    let dx = 0,
+      dy = 0;
 
-    if (this.cursors.left.isDown || this.wasd.left.isDown) {
-      dx = -1;
-      this.setFacing("left");
-    } else if (this.cursors.right.isDown || this.wasd.right.isDown) {
-      dx = 1;
-      this.setFacing("right");
-    } else if (this.cursors.up.isDown || this.wasd.up.isDown) {
-      dy = -1;
-      this.setFacing("up");
-    } else if (this.cursors.down.isDown || this.wasd.down.isDown) {
-      dy = 1;
-      this.setFacing("down");
-    }
+    if (this.cursors.left.isDown || this.wasd.left.isDown) dx = -1;
+    else if (this.cursors.right.isDown || this.wasd.right.isDown) dx = 1;
+    else if (this.cursors.up.isDown || this.wasd.up.isDown) dy = -1;
+    else if (this.cursors.down.isDown || this.wasd.down.isDown) dy = 1;
 
     if (dx !== 0 || dy !== 0) {
       this.movePath = [];
@@ -240,15 +270,7 @@ export class BootScene extends Phaser.Scene {
 
     if (this.movePath.length > 0) {
       const next = this.movePath.shift();
-      const diffCol = next.col - this.tileX;
-      const diffRow = next.row - this.tileY;
-
-      if (diffCol < 0) this.setFacing("left");
-      else if (diffCol > 0) this.setFacing("right");
-      else if (diffRow < 0) this.setFacing("up");
-      else if (diffRow > 0) this.setFacing("down");
-
-      this.stepPlayer(diffCol, diffRow);
+      this.stepPlayer(next.col - this.tileX, next.row - this.tileY);
     }
   }
 }
