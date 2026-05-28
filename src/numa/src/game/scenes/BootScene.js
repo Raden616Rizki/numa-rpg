@@ -9,6 +9,7 @@ import {
 import { generateChunk, getTileAt } from "../systems/MapGenerator";
 import { rollEncounter, getMonster } from "../systems/EncounterSystem";
 import { emit, on } from "../EventBus";
+import { generateNPCForChunk } from "../systems/NPCSystem";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -21,6 +22,8 @@ export class BootScene extends Phaser.Scene {
     this.movePath = [];
     this.chunkCache = new Map(); // key: "cx,cy" → tiles[][]
     this.chunkObjects = new Map(); // key: "cx,cy" → Phaser Graphics
+    this.npcs = new Map(); // key: npc id → npc data
+    this.npcSprites = new Map(); // key: npc id → Phaser objects
   }
 
   create() {
@@ -107,6 +110,74 @@ export class BootScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Spawns NPC sprite for a chunk if applicable
+   * @param {number} chunkX
+   * @param {number} chunkY
+   */
+  spawnNPCForChunk(chunkX, chunkY) {
+    const key = `${chunkX},${chunkY}`;
+    if (this.npcs.has(`npc_${chunkX}_${chunkY}`)) return;
+
+    const npc = generateNPCForChunk(chunkX, chunkY, this.chunkCache);
+    if (!npc) return;
+
+    this.npcs.set(npc.id, npc);
+
+    const body = this.add
+      .rectangle(npc.worldX, npc.worldY, TILE_SIZE - 2, TILE_SIZE - 2, 0xf0c040)
+      .setDepth(9);
+
+    const label = this.add
+      .text(npc.worldX, npc.worldY - TILE_SIZE, npc.name, {
+        fontSize: "5px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5)
+      .setDepth(11);
+
+    const indicator = this.add
+      .text(npc.worldX, npc.worldY - TILE_SIZE * 1.8, "!", {
+        fontSize: "8px",
+        fill: "#e8b84b",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5)
+      .setDepth(11);
+
+    body.setInteractive({ useHandCursor: true });
+    body.on("pointerdown", () => {
+      emit("npc:interact", { npc: this.npcs.get(npc.id) });
+    });
+
+    this.npcSprites.set(npc.id, { body, label, indicator });
+  }
+
+  /**
+   * Removes NPC sprites for chunks that are too far
+   * @param {number} playerChunkX
+   * @param {number} playerChunkY
+   */
+  despawnFarNPCs(playerChunkX, playerChunkY) {
+    for (const [id, sprites] of this.npcSprites.entries()) {
+      const npc = this.npcs.get(id);
+      if (!npc) continue;
+      const npcChunkX = Math.floor(npc.tileX / CHUNK_SIZE);
+      const npcChunkY = Math.floor(npc.tileY / CHUNK_SIZE);
+      const dist = Math.max(
+        Math.abs(npcChunkX - playerChunkX),
+        Math.abs(npcChunkY - playerChunkY),
+      );
+      if (dist > RENDER_DISTANCE + 1) {
+        sprites.body.destroy();
+        sprites.label.destroy();
+        sprites.indicator.destroy();
+        this.npcSprites.delete(id);
+      }
+    }
+  }
+
   /** Loads and renders all chunks within RENDER_DISTANCE of player */
   updateChunks() {
     const playerChunkX = Math.floor(this.tileX / CHUNK_SIZE);
@@ -115,10 +186,12 @@ export class BootScene extends Phaser.Scene {
     for (let dy = -RENDER_DISTANCE; dy <= RENDER_DISTANCE; dy++) {
       for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
         this.renderChunk(playerChunkX + dx, playerChunkY + dy);
+        this.spawnNPCForChunk(playerChunkX + dx, playerChunkY + dy);
       }
     }
 
     this.unloadFarChunks(playerChunkX, playerChunkY);
+    this.despawnFarNPCs(playerChunkX, playerChunkY);
   }
 
   createPlayer() {

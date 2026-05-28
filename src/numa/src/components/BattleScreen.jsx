@@ -130,7 +130,7 @@ export default function BattleScreen({ monster: initialMonster, player, inventor
             addLog(`+${monster.exp} EXP  +${monster.gold} Gold`)
             setMonster(prev => ({ ...prev, hp: 0 }))
             setPhase('ended')
-            setTimeout(() => onBattleEnd({ won: true, exp: monster.exp, gold: monster.gold, finalHp: playerHp, finalMp: playerMp }), 1500)
+            setTimeout(() => onBattleEnd({ won: true, exp: monster.exp, gold: monster.gold, finalHp: playerHp, finalMp: playerMp, monsterName: monster.name }), 1500)
         } else {
             setMonster(prev => ({ ...prev, hp: newHp }))
             doMonsterTurn(playerHp)
