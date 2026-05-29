@@ -1,26 +1,28 @@
 /**
  * Sends an event from Phaser to React
- * @param {string} event - event name
- * @param {object} data - payload
+ * @param {string} event
+ * @param {object} data
  */
 export function emit(event, data) {
   window.dispatchEvent(new CustomEvent(event, { detail: data }));
 }
 
 /**
- * Listens to a Phaser event from React
- * @param {string} event - event name
+ * Listens to an event
+ * @param {string} event
  * @param {function} callback
  */
 export function on(event, callback) {
-  window.addEventListener(event, (e) => callback(e.detail));
+  const handler = (e) => callback(e.detail);
+  window.addEventListener(event, handler);
+  return handler;
 }
 
 /**
- * Removes a Phaser event listener
- * @param {string} event - event name
- * @param {function} callback
+ * Removes an event listener
+ * @param {string} event
+ * @param {function} handler
  */
-export function off(event, callback) {
-  window.removeEventListener(event, callback);
+export function off(event, handler) {
+  window.removeEventListener(event, handler);
 }

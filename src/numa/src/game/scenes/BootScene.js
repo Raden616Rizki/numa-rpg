@@ -10,6 +10,7 @@ import { generateChunk, getTileAt } from "../systems/MapGenerator";
 import { rollEncounter, getMonster } from "../systems/EncounterSystem";
 import { emit, on } from "../EventBus";
 import { generateNPCForChunk } from "../systems/NPCSystem";
+import { loadGame } from "../systems/SaveSystem";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -27,7 +28,15 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    this.findSafeSpawn();
+    const save = loadGame();
+
+    if (save?.position) {
+      this.tileX = save.position.tileX;
+      this.tileY = save.position.tileY;
+    } else {
+      this.findSafeSpawn();
+    }
+
     this.updateChunks();
     this.createPlayer();
     this.setupInput();
@@ -313,6 +322,9 @@ export class BootScene extends Phaser.Scene {
 
     this.tileX = newCol;
     this.tileY = newRow;
+
+    emit("player:position", { tileX: this.tileX, tileY: this.tileY });
+
     this.isMoving = true;
 
     emit("player:moved", { col: newCol, row: newRow });

@@ -1,7 +1,12 @@
 import Noise from "noisejs";
 import { TILES, CHUNK_SIZE } from "../config";
+import { getOrCreateWorldSeed } from "./SaveSystem";
 
-const WORLD_SEED = Math.floor(Math.random() * 65536);
+let WORLD_SEED = getOrCreateWorldSeed();
+if (WORLD_SEED === null) {
+  WORLD_SEED = Math.floor(Math.random() * 65536);
+  getOrCreateWorldSeed(WORLD_SEED);
+}
 
 /**
  * Converts noise values to tile type

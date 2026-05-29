@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { FaHeart } from 'react-icons/fa'
-import { GiSwordClash, GiRun, GiSpellBook } from 'react-icons/gi'
+import { GiSwordClash, GiRun, GiSpellBook, GiShield } from 'react-icons/gi'
 import { FaBoxOpen } from 'react-icons/fa'
 import { calcDamage, calcSpell, applyItem, getMonsterAction } from '../game/systems/BattleSystem'
 import { getAvailableSpells } from '../game/data/spells'
@@ -61,21 +61,63 @@ export default function BattleScreen({ monster: initialMonster, player, inventor
 
     function handleAttack() {
         if (phase !== 'player_turn') return
+        setPhase('enemy_turn')
         const { damage, isCrit } = calcDamage(player.atk, monster.def)
         addLog(isCrit
             ? `Serangan kritis! ${damage} damage!`
             : `Kamu menyerang untuk ${damage} damage!`
         )
-        resolveMonsterHp(monster.hp - damage)
-        endPlayerTurn()
+        setMenu('main')
+        resolveMonsterHp(monster.hp - damage, playerHp)
+    }
+
+    function handleDefend() {
+        if (phase !== 'player_turn') return
+        setPhase('enemy_turn')
+        addLog('Kamu bersiap bertahan!')
+        setMenu('main')
+        doMonsterTurnWithDefend()
+    }
+
+    function doMonsterTurnWithDefend() {
+        setTimeout(() => {
+            if (stunned) {
+                addLog(`${monster.name} terkena stun!`)
+                setStunned(false)
+                setPhase('player_turn')
+                return
+            }
+
+            const action = getMonsterAction(monster)
+            addLog(action.message)
+
+            if (action.type === 'attack' || action.type === 'power_attack') {
+                const atkMult = action.type === 'power_attack' ? 1.5 : 1
+                const { damage } = calcDamage(Math.floor(monster.atk * atkMult), player.def)
+                const reduced = Math.max(1, Math.floor(damage * 0.5))
+                addLog(`Damage berkurang! Kamu menerima ${reduced} damage!`)
+                const newHp = playerHp - reduced
+                if (newHp <= 0) {
+                    addLog('Kamu kalah...')
+                    setPlayerHp(0)
+                    setPhase('ended')
+                    setTimeout(() => onBattleEnd({ won: false, finalHp: 0, finalMp: playerMp }), 1500)
+                    return
+                }
+                setPlayerHp(newHp)
+            }
+            setPhase('player_turn')
+        }, 900)
     }
 
     function handleSpell(spell) {
+        if (phase !== 'player_turn') return
         if (playerMp < spell.mpCost) {
             addLog('MP tidak cukup!')
             return
         }
 
+        setPhase('enemy_turn')
         const result = calcSpell(spell, player.level)
         setPlayerMp(prev => prev - spell.mpCost)
 
@@ -83,31 +125,33 @@ export default function BattleScreen({ monster: initialMonster, player, inventor
             addLog(`${spell.name}! ${result.damage} damage!`)
             if (result.stun) addLog(`${monster.name} terkena stun!`)
             setStunned(result.stun ?? false)
-            resolveMonsterHp(monster.hp - result.damage)
+            setMenu('main')
+            resolveMonsterHp(monster.hp - result.damage, playerHp)
         } else if (result.heal) {
             const healed = Math.min(result.heal, player.maxHp - playerHp)
-            setPlayerHp(prev => prev + healed)
+            const newHp = playerHp + healed
+            setPlayerHp(newHp)
             addLog(`${spell.name}! Pulih ${healed} HP!`)
-            doMonsterTurn(playerHp + healed)
+            setMenu('main')
+            doMonsterTurn(newHp)
         }
-
-        endPlayerTurn()
     }
 
     function handleItem(itemId) {
+        if (phase !== 'player_turn') return
         const slot = inventory.find(s => s.itemId === itemId && s.quantity > 0)
         if (!slot) return
 
+        setPhase('enemy_turn')
         const item = ITEMS[itemId]
         const result = applyItem(item, { hp: playerHp, mp: playerMp, maxHp: player.maxHp, maxMp: player.maxMp })
 
         addLog(result.message)
         setPlayerHp(result.hp)
         setPlayerMp(result.mp)
-
         onInventoryChange(itemId, -1)
+        setMenu('main')
         doMonsterTurn(result.hp)
-        endPlayerTurn()
     }
 
     function handleRun() {
@@ -124,16 +168,20 @@ export default function BattleScreen({ monster: initialMonster, player, inventor
         endPlayerTurn()
     }
 
-    function resolveMonsterHp(newHp) {
+    function resolveMonsterHp(newHp, currentPlayerHp) {
         if (newHp <= 0) {
             addLog(`${monster.name} dikalahkan!`)
             addLog(`+${monster.exp} EXP  +${monster.gold} Gold`)
             setMonster(prev => ({ ...prev, hp: 0 }))
             setPhase('ended')
-            setTimeout(() => onBattleEnd({ won: true, exp: monster.exp, gold: monster.gold, finalHp: playerHp, finalMp: playerMp, monsterName: monster.name }), 1500)
+            setTimeout(() => onBattleEnd({
+                won: true, exp: monster.exp, gold: monster.gold,
+                finalHp: currentPlayerHp, finalMp: playerMp,
+                monsterName: monster.name,
+            }), 1500)
         } else {
             setMonster(prev => ({ ...prev, hp: newHp }))
-            doMonsterTurn(playerHp)
+            doMonsterTurn(currentPlayerHp)
         }
     }
 
@@ -196,6 +244,7 @@ export default function BattleScreen({ monster: initialMonster, player, inventor
                         <ActionButton icon={<GiSwordClash size={15} />} label="Serang" onClick={handleAttack} disabled={!isPlayerTurn} color="#cc4444" />
                         <ActionButton icon={<GiSpellBook size={15} />} label="Sihir" onClick={() => setMenu('spells')} disabled={!isPlayerTurn || availableSpells.length === 0} color="#4455cc" />
                         <ActionButton icon={<FaBoxOpen size={15} />} label="Item" onClick={() => setMenu('items')} disabled={!isPlayerTurn} color="#448844" />
+                        <ActionButton icon={<GiShield size={15} />} label="Bertahan" onClick={handleDefend} disabled={!isPlayerTurn} color="#885522" />
                         <ActionButton icon={<GiRun size={15} />} label="Kabur" onClick={handleRun} disabled={!isPlayerTurn} color="#555566" />
                     </div>
                 )}
