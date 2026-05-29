@@ -1,3 +1,5 @@
+import { SHOP_EQUIPMENT } from "./equipment";
+
 export const ITEMS = {
   health_potion: {
     id: "health_potion",

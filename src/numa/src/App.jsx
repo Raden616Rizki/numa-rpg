@@ -19,6 +19,9 @@ import ItemSpellMenu from './components/ItemSpellMenu'
 import Toast from './components/Toast'
 import ConfirmModal from './components/ConfirmModal'
 import { FaBoxOpen } from 'react-icons/fa'
+import { DEFAULT_EQUIPMENT, calcEquipmentStats, EQUIPMENT } from './game/data/equipment'
+import EquipmentScreen from './components/EquipmentScreen'
+import { GiBroadsword } from "react-icons/gi";
 
 const DEFAULT_PLAYER = {
   name: 'Hero',
@@ -45,6 +48,9 @@ function App() {
   const [toast, setToast] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showItemMenu, setShowItemMenu] = useState(false)
+  const [equipped, setEquipped] = useState(DEFAULT_EQUIPMENT)
+  const [equipmentInventory, setEquipmentInventory] = useState([])
+  const [showEquipment, setShowEquipment] = useState(false)
 
   const playerRef = useRef(player)
   const inventoryRef = useRef(inventory)
@@ -96,6 +102,8 @@ function App() {
       inventory: inventoryRef.current,
       quests: questsRef.current,
       position: positionRef.current,
+      equipped,
+      equipmentInventory,
       savedAt: timestamp,
     })
     setSavedAt(timestamp)
@@ -157,6 +165,8 @@ function App() {
     setInventory(save.inventory)
     setQuests(save.quests ?? [])
     setPosition(save.position)
+    setEquipped(save.equipped ?? DEFAULT_EQUIPMENT)
+    setEquipmentInventory(save.equipmentInventory ?? [])
     setGameStarted(true)
   }
 
@@ -242,6 +252,30 @@ function App() {
     })
   }
 
+  function getEffectivePlayer() {
+    const bonuses = calcEquipmentStats(equipped)
+    return {
+      ...player,
+      atk: player.atk + (bonuses.atk ?? 0),
+      def: player.def + (bonuses.def ?? 0),
+      maxHp: player.maxHp + (bonuses.hp ?? 0),
+      maxMp: player.maxMp + (bonuses.mp ?? 0),
+    }
+  }
+
+  function handleEquip(slot, itemId) {
+    setEquipped(prev => ({ ...prev, [slot]: itemId }))
+  }
+
+  function handleUnequip(slot) {
+    setEquipped(prev => ({ ...prev, [slot]: null }))
+  }
+
+  function handleBuyEquipment(itemId, price) {
+    setPlayer(prev => ({ ...prev, gold: prev.gold - price }))
+    setEquipmentInventory(prev => [...prev, itemId])
+  }
+
   if (!gameStarted) {
     return (
       <MainMenu
@@ -256,7 +290,7 @@ function App() {
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
       <div id="game-container" ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      <HUD player={player} expToNextLevel={expToNextLevel} />
+      <HUD player={getEffectivePlayer()} expToNextLevel={expToNextLevel} />
       <NPCOverlay />
       <QuestLog quests={quests} />
 
@@ -274,7 +308,7 @@ function App() {
 
       {battle && (
         <BattleScreen
-          monster={battle} player={player} inventory={inventory}
+          monster={battle} player={getEffectivePlayer()} inventory={inventory}
           onBattleEnd={handleBattleEnd} onInventoryChange={handleInventoryChange}
         />
       )}
@@ -293,8 +327,12 @@ function App() {
       )}
       {shop && !battle && (
         <ShopScreen
-          playerGold={player.gold} inventory={inventory}
-          onBuy={handleBuy} onClose={() => setShop(false)}
+          playerGold={player.gold}
+          inventory={inventory}
+          equipmentInventory={equipmentInventory}
+          onBuy={handleBuy}
+          onBuyEquipment={handleBuyEquipment}
+          onClose={() => setShop(false)}
         />
       )}
       {showSaveLoad && (
@@ -318,9 +356,33 @@ function App() {
           <FaBoxOpen size={11} /> Item/Sihir
         </button>
       )}
+      {!battle && (
+        <button onClick={() => setShowEquipment(true)} style={{
+          position: 'absolute', top: 50, left: 210,
+          background: 'rgba(0,0,0,0.6)', border: '1px solid #444',
+          borderRadius: 4, padding: '6px 10px',
+          color: '#aaa', cursor: 'pointer',
+          fontSize: 11, zIndex: 50,
+          fontFamily: 'Courier New',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <GiBroadsword size={11} /> Equipment
+        </button>
+      )}
+
+      {showEquipment && !battle && (
+        <EquipmentScreen
+          equipped={equipped}
+          equipmentInventory={equipmentInventory}
+          basePlayer={player}
+          onEquip={handleEquip}
+          onUnequip={handleUnequip}
+          onClose={() => setShowEquipment(false)}
+        />
+      )}
       {showItemMenu && !battle && (
         <ItemSpellMenu
-          player={player}
+          player={getEffectivePlayer()}
           inventory={inventory}
           onUseItem={handleUseItemOutside}
           onUseSpell={handleUseSpellOutside}
