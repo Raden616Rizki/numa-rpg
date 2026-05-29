@@ -185,17 +185,18 @@ export class BootScene extends Phaser.Scene {
     for (const [id, sprites] of this.npcSprites.entries()) {
       const npc = this.npcs.get(id);
       if (!npc) continue;
+
       const npcChunkX = Math.floor(npc.tileX / CHUNK_SIZE);
       const npcChunkY = Math.floor(npc.tileY / CHUNK_SIZE);
       const dist = Math.max(
         Math.abs(npcChunkX - playerChunkX),
         Math.abs(npcChunkY - playerChunkY),
       );
+
       if (dist > RENDER_DISTANCE + 1) {
-        sprites.body.destroy();
-        sprites.label.destroy();
-        sprites.indicator.destroy();
+        if (sprites.body && sprites.body.active) sprites.body.destroy();
         this.npcSprites.delete(id);
+        this.npcs.delete(id);
       }
     }
   }
