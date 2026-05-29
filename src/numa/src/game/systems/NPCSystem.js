@@ -12,6 +12,8 @@ const NPC_NAMES = [
   "Isolde",
 ];
 
+const MERCHANT_NAMES = ["Pedagang Tua", "Bartel", "Wren", "Merchant"];
+
 const NPC_DIALOGUES = [
   "Hati-hati di dalam hutan, banyak monster berbahaya!",
   "Aku punya pekerjaan untukmu jika kamu berminat.",
@@ -27,11 +29,11 @@ const NPC_DIALOGUES = [
  * @returns {object|null}
  */
 export function generateNPCForChunk(chunkX, chunkY, chunkCache) {
-  // tidak setiap chunk punya NPC
   const hash = Math.abs((chunkX * 73856093) ^ (chunkY * 19349663)) % 100;
   if (hash > 25) return null;
 
-  // cari tile yang aman di dalam chunk
+  const isMerchant = hash % 3 === 0;
+
   const startCol = chunkX * CHUNK_SIZE;
   const startRow = chunkY * CHUNK_SIZE;
 
@@ -41,13 +43,18 @@ export function generateNPCForChunk(chunkX, chunkY, chunkCache) {
       if (tile === TILES.GRASS || tile === TILES.DIRT) {
         return {
           id: `npc_${chunkX}_${chunkY}`,
-          name: NPC_NAMES[hash % NPC_NAMES.length],
-          dialogue: NPC_DIALOGUES[hash % NPC_DIALOGUES.length],
+          name: isMerchant
+            ? MERCHANT_NAMES[hash % MERCHANT_NAMES.length]
+            : NPC_NAMES[hash % NPC_NAMES.length],
+          dialogue: isMerchant
+            ? "Selamat datang! Aku menjual berbagai barang berguna."
+            : NPC_DIALOGUES[hash % NPC_DIALOGUES.length],
           tileX: startCol + col,
           tileY: startRow + row,
           worldX: (startCol + col) * TILE_SIZE + TILE_SIZE / 2,
           worldY: (startRow + row) * TILE_SIZE + TILE_SIZE / 2,
-          hasQuest: true,
+          isMerchant,
+          hasQuest: !isMerchant,
           questGiven: false,
         };
       }

@@ -1,5 +1,5 @@
 import { FaComment } from 'react-icons/fa'
-import { GiScrollUnfurled } from 'react-icons/gi'
+import { GiScrollUnfurled, GiShop } from 'react-icons/gi'
 
 export default function NPCDialog({ npc, onAcceptQuest, onDecline, quest }) {
     if (!npc) return null
@@ -31,7 +31,7 @@ export default function NPCDialog({ npc, onAcceptQuest, onDecline, quest }) {
                     {npc.dialogue}
                 </p>
 
-                {npc.hasQuest && !npc.questGiven && quest && (
+                {!npc.isMerchant && quest && (
                     <div style={{
                         background: '#1a1a1a', border: '1px solid #333',
                         borderRadius: 4, padding: '10px 14px',
@@ -54,23 +54,29 @@ export default function NPCDialog({ npc, onAcceptQuest, onDecline, quest }) {
                 )}
 
                 <div style={{ display: 'flex', gap: 8 }}>
-                    {npc.hasQuest && !npc.questGiven && (
-                        <button onClick={onAcceptQuest} style={{
-                            flex: 1, padding: '9px 0',
-                            background: '#2a4a2a', border: '1px solid #4a8a4a',
-                            borderRadius: 4, color: '#88cc88',
-                            fontSize: 12, cursor: 'pointer',
-                        }}>
-                            Terima Quest
-                        </button>
-                    )}
+                    <button onClick={onAcceptQuest} style={{
+                        flex: 1, padding: '9px 0',
+                        background: npc.isMerchant ? '#1a3a2a' : '#2a4a2a',
+                        border: `1px solid ${npc.isMerchant ? '#2a6a4a' : '#4a8a4a'}`,
+                        borderRadius: 4,
+                        color: npc.isMerchant ? '#44cc88' : '#88cc88',
+                        fontSize: 12, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', gap: 6,
+                    }}>
+                        {npc.isMerchant
+                            ? <><GiShop size={13} /> Lihat Dagangan</>
+                            : 'Terima Quest'
+                        }
+                    </button>
+
                     <button onClick={onDecline} style={{
                         flex: 1, padding: '9px 0',
                         background: '#1a1a1a', border: '1px solid #333',
                         borderRadius: 4, color: '#888',
                         fontSize: 12, cursor: 'pointer',
                     }}>
-                        {npc.questGiven ? 'Tutup' : 'Tolak'}
+                        Tolak
                     </button>
                 </div>
 

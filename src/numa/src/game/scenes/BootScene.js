@@ -116,7 +116,6 @@ export class BootScene extends Phaser.Scene {
    * @param {number} chunkY
    */
   spawnNPCForChunk(chunkX, chunkY) {
-    const key = `${chunkX},${chunkY}`;
     if (this.npcs.has(`npc_${chunkX}_${chunkY}`)) return;
 
     const npc = generateNPCForChunk(chunkX, chunkY, this.chunkCache);
@@ -125,33 +124,47 @@ export class BootScene extends Phaser.Scene {
     this.npcs.set(npc.id, npc);
 
     const body = this.add
-      .rectangle(npc.worldX, npc.worldY, TILE_SIZE - 2, TILE_SIZE - 2, 0xf0c040)
+      .rectangle(
+        npc.worldX,
+        npc.worldY,
+        TILE_SIZE - 2,
+        TILE_SIZE - 2,
+        npc.isMerchant ? 0x44aa66 : 0xf0c040,
+      )
       .setDepth(9);
-
-    const label = this.add
-      .text(npc.worldX, npc.worldY - TILE_SIZE, npc.name, {
-        fontSize: "5px",
-        fill: "#ffffff",
-        fontFamily: "Courier New",
-      })
-      .setOrigin(0.5)
-      .setDepth(11);
-
-    const indicator = this.add
-      .text(npc.worldX, npc.worldY - TILE_SIZE * 1.8, "!", {
-        fontSize: "8px",
-        fill: "#e8b84b",
-        fontFamily: "Courier New",
-      })
-      .setOrigin(0.5)
-      .setDepth(11);
 
     body.setInteractive({ useHandCursor: true });
     body.on("pointerdown", () => {
       emit("npc:interact", { npc: this.npcs.get(npc.id) });
     });
 
-    this.npcSprites.set(npc.id, { body, label, indicator });
+    this.npcSprites.set(npc.id, { body });
+  }
+
+  /** Converts all NPC world positions to screen positions and emits to React */
+  emitNPCPositions() {
+    const positions = [];
+    const cam = this.cameras.main;
+
+    for (const [id, npc] of this.npcs.entries()) {
+      if (!this.npcSprites.has(id)) continue;
+
+      const sx = (npc.worldX - cam.worldView.x) * cam.zoom;
+      const sy = (npc.worldY - cam.worldView.y) * cam.zoom;
+
+      if (sx < -50 || sx > cam.width + 50) continue;
+      if (sy < -50 || sy > cam.height + 50) continue;
+
+      positions.push({
+        id,
+        name: npc.name,
+        sx,
+        sy,
+        isMerchant: npc.isMerchant,
+      });
+    }
+
+    emit("npc:positions", { positions });
   }
 
   /**
@@ -325,6 +338,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   update() {
+    this.emitNPCPositions();
+
     if (this.inBattle || this.isMoving) return;
 
     let dx = 0,

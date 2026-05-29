@@ -10,6 +10,8 @@ import { STARTING_ITEMS } from './game/data/items'
 import { expToNextLevel, calcLevelUpStats } from './game/systems/BattleSystem'
 import { SPELLS } from './game/data/spells'
 import { generateQuest } from './game/data/quests'
+import NPCOverlay from './components/NPCOverlay'
+import ShopScreen from './components/ShopScreen'
 
 function App() {
   const containerRef = useRef(null)
@@ -26,6 +28,7 @@ function App() {
   const [activeNPC, setActiveNPC] = useState(null)
   const [activeQuest, setActiveQuest] = useState(null)
   const [quests, setQuests] = useState([])
+  const [shop, setShop] = useState(false)
   const playerRef = useRef(player)
 
   useEffect(() => {
@@ -38,9 +41,14 @@ function App() {
     const onEncounter = (data) => setBattle(data.monster)
 
     const onNPCInteract = (data) => {
-      const quest = generateQuest(playerRef.current.level)
-      setActiveQuest(quest)
-      setActiveNPC(data.npc)
+      if (data.npc.isMerchant) {
+        setActiveNPC(data.npc)
+        setShop(false)
+      } else {
+        const quest = generateQuest(playerRef.current.level)
+        setActiveQuest(quest)
+        setActiveNPC(data.npc)
+      }
     }
 
     on('encounter:start', onEncounter)
@@ -61,9 +69,15 @@ function App() {
     setActiveQuest(null)
   }
 
+  function handleAcceptShop() {
+    setShop(true)
+    setActiveNPC(null)
+  }
+
   function handleDeclineQuest() {
     setActiveNPC(null)
     setActiveQuest(null)
+    setShop(false)
   }
 
   function handleInventoryChange(itemId, delta) {
@@ -72,6 +86,25 @@ function App() {
         ? { ...slot, quantity: slot.quantity + delta }
         : slot
     ))
+  }
+
+  function handleBuy(itemId, price) {
+    setPlayer(prev => ({ ...prev, gold: prev.gold - price }))
+    setInventory(prev => {
+      const existing = prev.find(s => s.itemId === itemId)
+      if (existing) {
+        return prev.map(s => s.itemId === itemId
+          ? { ...s, quantity: s.quantity + 1 }
+          : s
+        )
+      }
+      return [...prev, { itemId, quantity: 1 }]
+    })
+  }
+
+  function handleCloseShop() {
+    setShop(false)
+    setActiveNPC(null)
   }
 
   function handleBattleEnd(result) {
@@ -122,6 +155,7 @@ function App() {
       <div id="game-container" ref={containerRef} style={{ width: '100%', height: '100%' }} />
       <HUD player={player} expToNextLevel={expToNextLevel} />
       <QuestLog quests={quests} />
+      <NPCOverlay />
       {battle && (
         <BattleScreen
           monster={battle}
@@ -138,11 +172,19 @@ function App() {
           onClose={() => setLevelUp(null)}
         />
       )}
-      {activeNPC && !battle && (
+      {shop && !battle && (
+        <ShopScreen
+          playerGold={player.gold}
+          inventory={inventory}
+          onBuy={handleBuy}
+          onClose={handleCloseShop}
+        />
+      )}
+      {activeNPC && !battle && !shop && (
         <NPCDialog
           npc={activeNPC}
-          quest={activeQuest}
-          onAcceptQuest={handleAcceptQuest}
+          quest={activeNPC.isMerchant ? null : activeQuest}
+          onAcceptQuest={activeNPC.isMerchant ? handleAcceptShop : handleAcceptQuest}
           onDecline={handleDeclineQuest}
         />
       )}
