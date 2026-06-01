@@ -47,6 +47,8 @@ export class BootScene extends Phaser.Scene {
     on("battle:end", () => {
       this.inBattle = false;
     });
+
+    window.__getChunkCache = () => this.chunkCache
   }
 
   /** Finds a safe GRASS or DIRT spawn tile near world origin */

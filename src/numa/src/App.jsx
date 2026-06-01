@@ -22,6 +22,7 @@ import { FaBoxOpen } from 'react-icons/fa'
 import { DEFAULT_EQUIPMENT, calcEquipmentStats, EQUIPMENT } from './game/data/equipment'
 import EquipmentScreen from './components/EquipmentScreen'
 import { GiBroadsword } from "react-icons/gi";
+import Minimap from './components/Minimap'
 
 const DEFAULT_PLAYER = {
   name: 'Hero',
@@ -401,6 +402,13 @@ function App() {
           message="Yakin ingin menghapus save file? Progress tidak bisa dikembalikan."
           onConfirm={handleDeleteSave}
           onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+      {!battle && (
+        <Minimap
+          playerTileX={position.tileX}
+          playerTileY={position.tileY}
+          getChunkCache={() => window.__getChunkCache?.()}
         />
       )}
     </div>
