@@ -14,6 +14,11 @@ import { generateNPCForChunk } from "../systems/NPCSystem";
 import { drawChunkWithEdges } from "../systems/TerrainRenderer";
 import { loadGame } from "../systems/SaveSystem";
 import { hasRamp } from "../systems/RampSystem";
+import {
+  generateVillage,
+  shouldHaveVillage,
+} from "../systems/VillageGenerator";
+import { renderVillage } from "../systems/VillageRenderer";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -28,6 +33,8 @@ export class BootScene extends Phaser.Scene {
     this.chunkObjects = new Map(); // key: "cx,cy" → Phaser Graphics
     this.npcs = new Map(); // key: npc id → npc data
     this.npcSprites = new Map(); // key: npc id → Phaser objects
+    this.villages = new Map(); // key: chunkKey → village data
+    this.villageGfx = new Map(); // key: chunkKey → Phaser Graphics
   }
 
   create() {
@@ -199,11 +206,13 @@ export class BootScene extends Phaser.Scene {
       for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
         this.renderChunk(playerChunkX + dx, playerChunkY + dy);
         this.spawnNPCForChunk(playerChunkX + dx, playerChunkY + dy);
+        this.spawnVillageForChunk(playerChunkX + dx, playerChunkY + dy);
       }
     }
 
     this.unloadFarChunks(playerChunkX, playerChunkY);
     this.despawnFarNPCs(playerChunkX, playerChunkY);
+    this.despawnFarVillages(playerChunkX, playerChunkY);
   }
 
   createPlayer() {
@@ -244,18 +253,7 @@ export class BootScene extends Phaser.Scene {
    * @returns {boolean}
    */
   isWalkable(col, row) {
-    const tile = getTileAt(col, row, this.chunkCache);
-    if (BLOCKED_TILES.includes(tile)) return false;
-
-    const fromTile = getTileAt(this.tileX, this.tileY, this.chunkCache);
-    const fromElev = TILE_ELEVATION[fromTile] ?? 1;
-    const toElev = TILE_ELEVATION[tile] ?? 1;
-
-    // Sama ketinggian — langsung bisa
-    if (fromElev === toElev) return true;
-
-    // Beda ketinggian — cek ramp
-    return hasRamp(this.tileX, this.tileY, col, row, this.chunkCache);
+    return this.isWalkableFrom(this.tileX, this.tileY, col, row);
   }
 
   /**
@@ -271,13 +269,48 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
-   * Finds shortest path to target using BFS
+   * Checks if movement from a specific position to another is valid
+   * @param {number} fromCol
+   * @param {number} fromRow
+   * @param {number} toCol
+   * @param {number} toRow
+   * @returns {boolean}
+   */
+  isWalkableFrom(fromCol, fromRow, toCol, toRow) {
+    const tile = getTileAt(toCol, toRow, this.chunkCache);
+    if (BLOCKED_TILES.includes(tile)) return false;
+
+    // Cek bangunan village
+    for (const village of this.villages.values()) {
+      for (const b of village.buildings) {
+        if (
+          toCol >= b.col &&
+          toCol < b.col + b.w &&
+          toRow >= b.row &&
+          toRow < b.row + b.h
+        )
+          return false;
+      }
+    }
+
+    const fromTile = getTileAt(fromCol, fromRow, this.chunkCache);
+    const fromElev = TILE_ELEVATION[fromTile] ?? 1;
+    const toElev = TILE_ELEVATION[tile] ?? 1;
+
+    if (fromElev === toElev) return true;
+    return hasRamp(fromCol, fromRow, toCol, toRow, this.chunkCache);
+  }
+
+  /**
+   * Finds shortest path to target using BFS, respecting elevation and ramps
    * @param {number} targetCol
    * @param {number} targetRow
    */
   setMoveTarget(targetCol, targetRow) {
-    if (!this.isWalkable(targetCol, targetRow)) return;
     if (targetCol === this.tileX && targetRow === this.tileY) return;
+
+    const targetTile = getTileAt(targetCol, targetRow, this.chunkCache);
+    if (BLOCKED_TILES.includes(targetTile)) return;
 
     const queue = [{ col: this.tileX, row: this.tileY, path: [] }];
     const visited = new Set();
@@ -292,18 +325,25 @@ export class BootScene extends Phaser.Scene {
 
     while (queue.length > 0) {
       const current = queue.shift();
+
       for (const dir of dirs) {
         const nextCol = current.col + dir.dc;
         const nextRow = current.row + dir.dr;
         const key = `${nextCol},${nextRow}`;
+
         if (visited.has(key)) continue;
-        if (!this.isWalkable(nextCol, nextRow)) continue;
+
+        if (!this.isWalkableFrom(current.col, current.row, nextCol, nextRow))
+          continue;
+
         visited.add(key);
         const newPath = [...current.path, { col: nextCol, row: nextRow }];
+
         if (nextCol === targetCol && nextRow === targetRow) {
           this.movePath = newPath;
           return;
         }
+
         queue.push({ col: nextCol, row: nextRow, path: newPath });
         if (visited.size > 2048) break;
       }
@@ -347,6 +387,105 @@ export class BootScene extends Phaser.Scene {
         this.updateChunks();
       },
     });
+  }
+
+  /**
+   * Generates and renders village for a chunk if applicable
+   * @param {number} chunkX
+   * @param {number} chunkY
+   */
+  spawnVillageForChunk(chunkX, chunkY) {
+    const key = `${chunkX},${chunkY}`;
+    if (this.villages.has(key)) return;
+    if (!shouldHaveVillage(chunkX, chunkY)) return;
+
+    const village = generateVillage(chunkX, chunkY, this.chunkCache);
+    if (!village) return;
+
+    this.villages.set(key, village);
+
+    const gfx = this.add.graphics();
+    gfx.setDepth(1);
+    renderVillage(gfx, village);
+    this.villageGfx.set(key, gfx);
+
+    // Spawn NPC untuk village
+    this.spawnVillageNPCs(village);
+  }
+
+  /**
+   * Spawns NPC sprites for a village
+   * @param {object} village
+   */
+  spawnVillageNPCs(village) {
+    const NPC_NAMES = ["Aldric", "Myrna", "Bram", "Lyra", "Gorund", "Tessa"];
+    const MERCHANT_NAMES = ["Pedagang Tua", "Bartel", "Wren"];
+
+    for (const npcData of village.npcs) {
+      if (this.npcSprites.has(npcData.id)) continue;
+
+      const worldX = npcData.tileX * TILE_SIZE + TILE_SIZE / 2;
+      const worldY = npcData.tileY * TILE_SIZE + TILE_SIZE / 2;
+
+      const hash =
+        Math.abs((npcData.tileX * 374761393) ^ (npcData.tileY * 668265263)) % 6;
+      const name = npcData.isMerchant
+        ? MERCHANT_NAMES[hash % MERCHANT_NAMES.length]
+        : NPC_NAMES[hash % NPC_NAMES.length];
+
+      const npc = {
+        id: npcData.id,
+        name,
+        dialogue: npcData.isMerchant
+          ? "Selamat datang! Aku menjual berbagai barang berguna."
+          : "Hei petualang! Aku punya tugas untukmu.",
+        tileX: npcData.tileX,
+        tileY: npcData.tileY,
+        worldX,
+        worldY,
+        isMerchant: npcData.isMerchant,
+        hasQuest: !npcData.isMerchant,
+        questGiven: false,
+      };
+
+      this.npcs.set(npc.id, npc);
+
+      const body = this.add
+        .rectangle(
+          worldX,
+          worldY,
+          TILE_SIZE - 2,
+          TILE_SIZE - 2,
+          npc.isMerchant ? 0x44aa66 : 0xf0c040,
+        )
+        .setDepth(9);
+
+      body.setInteractive({ useHandCursor: true });
+      body.on("pointerdown", () => {
+        emit("npc:interact", { npc: this.npcs.get(npc.id) });
+      });
+
+      this.npcSprites.set(npc.id, { body });
+    }
+  }
+
+  /**
+   * Removes village graphics for far chunks
+   * @param {number} playerChunkX
+   * @param {number} playerChunkY
+   */
+  despawnFarVillages(playerChunkX, playerChunkY) {
+    for (const [key, gfx] of this.villageGfx.entries()) {
+      const [cx, cy] = key.split(",").map(Number);
+      const dist = Math.max(
+        Math.abs(cx - playerChunkX),
+        Math.abs(cy - playerChunkY),
+      );
+      if (dist > RENDER_DISTANCE + 1) {
+        gfx.destroy();
+        this.villageGfx.delete(key);
+      }
+    }
   }
 
   update() {
