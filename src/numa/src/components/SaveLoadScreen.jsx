@@ -1,5 +1,4 @@
 import { FaSave, FaFolderOpen, FaTrash } from 'react-icons/fa'
-import { deleteSave } from '../game/systems/SaveSystem'
 
 export default function SaveLoadScreen({ savedAt, onSave, onLoad, onDelete, onClose, hasSave }) {
     return (
@@ -57,7 +56,7 @@ export default function SaveLoadScreen({ savedAt, onSave, onLoad, onDelete, onCl
                         <MenuButton
                             icon={<FaTrash size={13} />}
                             label="Hapus Save"
-                            onClick={() => { onClose(); setConfirmDelete(true) }}
+                            onClick={onDelete}
                             color="#3a1a1a"
                             borderColor="#6a2a2a"
                             textColor="#cc6666"

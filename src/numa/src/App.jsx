@@ -202,6 +202,18 @@ function App() {
     })
   }
 
+  function handleSellItem(itemId, sellPrice) {
+    setPlayer(prev => ({ ...prev, gold: prev.gold + sellPrice }))
+    setInventory(prev => prev.map(s =>
+      s.itemId === itemId ? { ...s, quantity: s.quantity - 1 } : s
+    ).filter(s => s.quantity > 0))
+  }
+
+  function handleSellEquipment(itemId, sellPrice) {
+    setPlayer(prev => ({ ...prev, gold: prev.gold + sellPrice }))
+    setEquipmentInventory(prev => prev.filter(id => id !== itemId))
+  }
+
   function handleInventoryChange(itemId, delta) {
     setInventory(prev => prev.map(slot =>
       slot.itemId === itemId
@@ -331,8 +343,11 @@ function App() {
           playerGold={player.gold}
           inventory={inventory}
           equipmentInventory={equipmentInventory}
+          equipped={equipped}
           onBuy={handleBuy}
           onBuyEquipment={handleBuyEquipment}
+          onSellItem={handleSellItem}
+          onSellEquipment={handleSellEquipment}
           onClose={() => setShop(false)}
         />
       )}
