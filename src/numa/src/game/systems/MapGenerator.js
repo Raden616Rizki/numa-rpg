@@ -9,25 +9,24 @@ if (WORLD_SEED === null) {
 }
 
 /**
- * Converts noise values to tile type
  * @param {number} e - elevation 0..1
  * @param {number} m - moisture 0..1
- * @returns {number}
+ * @returns {number} tile type
  */
 function noiseToTile(e, m) {
-  if (e < 0.3) return TILES.WATER;
-  if (e < 0.38) return TILES.DIRT;
-  if (e < 0.45) return TILES.GRASS;
-  if (e < 0.6) return m > 0.5 ? TILES.FOREST : TILES.GRASS;
-  if (e < 0.75) return m > 0.4 ? TILES.DENSE_FOREST : TILES.FOREST;
-  return TILES.STONE;
+  if (e < 0.28) return TILES.WATER;
+  if (e < 0.35) return TILES.DIRT;
+  if (e < 0.5) return m > 0.55 ? TILES.FOREST : TILES.GRASS;
+  if (e < 0.68) return m > 0.45 ? TILES.DENSE_FOREST : TILES.FOREST;
+  if (e < 0.8) return TILES.STONE;
+  return TILES.CLIFF;
 }
 
 /**
- * Generates tile data for a single chunk
- * @param {number} chunkX - chunk column index
- * @param {number} chunkY - chunk row index
- * @returns {number[][]} 2D array of tile types
+ * Generates tile data for a chunk
+ * @param {number} chunkX
+ * @param {number} chunkY
+ * @returns {number[][]}
  */
 export function generateChunk(chunkX, chunkY) {
   const elevNoise = new Noise.Noise(WORLD_SEED);
@@ -40,7 +39,6 @@ export function generateChunk(chunkX, chunkY) {
   for (let row = 0; row < CHUNK_SIZE; row++) {
     tiles[row] = [];
     for (let col = 0; col < CHUNK_SIZE; col++) {
-      // world tile position
       const worldCol = chunkX * CHUNK_SIZE + col;
       const worldRow = chunkY * CHUNK_SIZE + row;
 
@@ -63,10 +61,10 @@ export function generateChunk(chunkX, chunkY) {
 }
 
 /**
- * Returns tile type at a world tile position, generating chunk if needed
+ * Gets tile type at world position from cache
  * @param {number} worldCol
  * @param {number} worldRow
- * @param {Map<string, number[][]>} chunkCache
+ * @param {Map} chunkCache
  * @returns {number}
  */
 export function getTileAt(worldCol, worldRow, chunkCache) {

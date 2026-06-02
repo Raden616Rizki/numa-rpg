@@ -5,12 +5,15 @@ import {
   BLOCKED_TILES,
   CHUNK_SIZE,
   RENDER_DISTANCE,
+  TILE_ELEVATION,
 } from "../config";
 import { generateChunk, getTileAt } from "../systems/MapGenerator";
 import { rollEncounter, getMonster } from "../systems/EncounterSystem";
 import { emit, on } from "../EventBus";
 import { generateNPCForChunk } from "../systems/NPCSystem";
+import { drawChunkWithEdges } from "../systems/TerrainRenderer";
 import { loadGame } from "../systems/SaveSystem";
+import { hasRamp } from "../systems/RampSystem";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -48,7 +51,7 @@ export class BootScene extends Phaser.Scene {
       this.inBattle = false;
     });
 
-    window.__getChunkCache = () => this.chunkCache
+    window.__getChunkCache = () => this.chunkCache;
   }
 
   /** Finds a safe GRASS or DIRT spawn tile near world origin */
@@ -80,23 +83,7 @@ export class BootScene extends Phaser.Scene {
     this.chunkCache.set(key, tiles);
 
     const gfx = this.add.graphics();
-    const originX = chunkX * CHUNK_SIZE * TILE_SIZE;
-    const originY = chunkY * CHUNK_SIZE * TILE_SIZE;
-
-    for (let row = 0; row < CHUNK_SIZE; row++) {
-      for (let col = 0; col < CHUNK_SIZE; col++) {
-        const tileType = tiles[row][col];
-        const color = TILE_COLORS[tileType];
-        gfx.fillStyle(color, 1);
-        gfx.fillRect(
-          originX + col * TILE_SIZE,
-          originY + row * TILE_SIZE,
-          TILE_SIZE,
-          TILE_SIZE,
-        );
-      }
-    }
-
+    drawChunkWithEdges(gfx, chunkX, chunkY, tiles, this.chunkCache);
     gfx.setDepth(0);
     this.chunkObjects.set(key, gfx);
   }
@@ -258,7 +245,17 @@ export class BootScene extends Phaser.Scene {
    */
   isWalkable(col, row) {
     const tile = getTileAt(col, row, this.chunkCache);
-    return !BLOCKED_TILES.includes(tile);
+    if (BLOCKED_TILES.includes(tile)) return false;
+
+    const fromTile = getTileAt(this.tileX, this.tileY, this.chunkCache);
+    const fromElev = TILE_ELEVATION[fromTile] ?? 1;
+    const toElev = TILE_ELEVATION[tile] ?? 1;
+
+    // Sama ketinggian — langsung bisa
+    if (fromElev === toElev) return true;
+
+    // Beda ketinggian — cek ramp
+    return hasRamp(this.tileX, this.tileY, col, row, this.chunkCache);
   }
 
   /**
