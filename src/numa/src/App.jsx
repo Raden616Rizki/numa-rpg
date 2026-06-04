@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPhaserGame } from './game/PhaserGame'
+import { createPhaserGame, getScene } from './game/PhaserGame'
 import { on, off, emit } from './game/EventBus'
 import HUD from './components/HUD'
 import BattleScreen from './components/BattleScreen'
@@ -10,19 +10,20 @@ import NPCOverlay from './components/NPCOverlay'
 import ShopScreen from './components/ShopScreen'
 import SaveLoadScreen from './components/SaveLoadScreen'
 import MainMenu from './components/MainMenu'
+import InnScreen from './components/InnScreen'
+import ItemSpellMenu from './components/ItemSpellMenu'
+import Toast from './components/Toast'
+import ConfirmModal from './components/ConfirmModal'
+import EquipmentScreen from './components/EquipmentScreen'
+import Minimap from './components/Minimap'
 import { STARTING_ITEMS } from './game/data/items'
 import { expToNextLevel, calcLevelUpStats } from './game/systems/BattleSystem'
 import { SPELLS } from './game/data/spells'
 import { generateQuest } from './game/data/quests'
 import { saveGame, loadGame, deleteSave, hasSave } from './game/systems/SaveSystem'
-import ItemSpellMenu from './components/ItemSpellMenu'
-import Toast from './components/Toast'
-import ConfirmModal from './components/ConfirmModal'
+import { DEFAULT_EQUIPMENT, calcEquipmentStats } from './game/data/equipment'
 import { FaBoxOpen } from 'react-icons/fa'
-import { DEFAULT_EQUIPMENT, calcEquipmentStats, EQUIPMENT } from './game/data/equipment'
-import EquipmentScreen from './components/EquipmentScreen'
-import { GiBroadsword } from "react-icons/gi";
-import Minimap from './components/Minimap'
+import { GiBroadsword } from 'react-icons/gi'
 
 const DEFAULT_PLAYER = {
   name: 'Hero',
@@ -34,25 +35,29 @@ const DEFAULT_PLAYER = {
 
 function App() {
   const containerRef = useRef(null)
+
   const [gameStarted, setGameStarted] = useState(false)
   const [player, setPlayer] = useState(DEFAULT_PLAYER)
   const [inventory, setInventory] = useState(STARTING_ITEMS)
+  const [equipped, setEquipped] = useState(DEFAULT_EQUIPMENT)
+  const [equipmentInventory, setEquipmentInventory] = useState([])
   const [quests, setQuests] = useState([])
   const [battle, setBattle] = useState(null)
   const [levelUp, setLevelUp] = useState(null)
   const [activeNPC, setActiveNPC] = useState(null)
   const [activeQuest, setActiveQuest] = useState(null)
   const [shop, setShop] = useState(false)
+  const [showInn, setShowInn] = useState(false)
   const [showSaveLoad, setShowSaveLoad] = useState(false)
+  const [showItemMenu, setShowItemMenu] = useState(false)
+  const [showEquipment, setShowEquipment] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [savedAt, setSavedAt] = useState(loadGame()?.savedAt ?? null)
   const [position, setPosition] = useState({ tileX: 0, tileY: 0 })
   const [toast, setToast] = useState(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [showItemMenu, setShowItemMenu] = useState(false)
-  const [equipped, setEquipped] = useState(DEFAULT_EQUIPMENT)
-  const [equipmentInventory, setEquipmentInventory] = useState([])
-  const [showEquipment, setShowEquipment] = useState(false)
+  const [currentVillage, setCurrentVillage] = useState(null)
 
+  // refs untuk akses nilai terbaru di dalam event listener closure
   const playerRef = useRef(player)
   const inventoryRef = useRef(inventory)
   const questsRef = useRef(quests)
@@ -69,25 +74,54 @@ function App() {
     const game = createPhaserGame('game-container')
 
     const onEncounter = (data) => setBattle(data.monster)
-    const onNPCInteract = (data) => {
-      if (data.npc.isMerchant) {
-        setActiveNPC(data.npc)
-        setShop(false)
-      } else {
-        setActiveQuest(generateQuest(playerRef.current.level))
-        setActiveNPC(data.npc)
-      }
-    }
+
     const onPosition = (data) => setPosition(data)
 
+    const onNPCInteract = (data) => {
+      const { npc } = data
+      if (npc.isInnkeeper) {
+        setActiveNPC(npc)
+        setShowInn(true)
+        return
+      }
+      if (npc.isMerchant) {
+        setActiveNPC(npc)
+        setShop(false)
+        return
+      }
+      setActiveQuest(generateQuest(playerRef.current.level))
+      setActiveNPC(npc)
+    }
+
+    const onVillageEnter = (data) => {
+      setCurrentVillage(data.villageData)
+      const bootScene = getScene('BootScene')
+      if (bootScene) {
+        bootScene.scene.launch('VillageScene', {
+          villageData: data.villageData,
+          spawnSide: 'south',
+        })
+      }
+    }
+
+    const onVillageExit = () => {
+      setCurrentVillage(null)
+      const bootScene = getScene('BootScene')
+      if (bootScene) bootScene.scene.resume()
+    }
+
     on('encounter:start', onEncounter)
-    on('npc:interact', onNPCInteract)
     on('player:position', onPosition)
+    on('npc:interact', onNPCInteract)
+    on('village:enter', onVillageEnter)
+    on('village:exit', onVillageExit)
 
     return () => {
       off('encounter:start', onEncounter)
-      off('npc:interact', onNPCInteract)
       off('player:position', onPosition)
+      off('npc:interact', onNPCInteract)
+      off('village:enter', onVillageEnter)
+      off('village:exit', onVillageExit)
       game.destroy(true)
     }
   }, [gameStarted])
@@ -119,10 +153,12 @@ function App() {
     setInventory(save.inventory)
     setQuests(save.quests ?? [])
     setPosition(save.position)
+    setEquipped(save.equipped ?? DEFAULT_EQUIPMENT)
+    setEquipmentInventory(save.equipmentInventory ?? [])
     setSavedAt(save.savedAt)
     setShowSaveLoad(false)
     showToast('Game berhasil di-load!', 'info')
-
+    // restart Phaser supaya posisi player sesuai save
     setGameStarted(false)
     setTimeout(() => setGameStarted(true), 100)
   }
@@ -135,27 +171,12 @@ function App() {
     showToast('Save file dihapus.', 'error')
   }
 
-  function handleUseItemOutside(itemId, result) {
-    setPlayer(prev => ({ ...prev, hp: result.hp, mp: result.mp }))
-    setInventory(prev => prev.map(s =>
-      s.itemId === itemId ? { ...s, quantity: s.quantity - 1 } : s
-    ))
-    showToast(result.message, 'success')
-  }
-
-  function handleUseSpellOutside(spell, healAmt) {
-    setPlayer(prev => ({
-      ...prev,
-      hp: Math.min(prev.maxHp, prev.hp + healAmt),
-      mp: prev.mp - spell.mpCost,
-    }))
-    showToast(`${spell.name}! Pulih ${healAmt} HP!`, 'success')
-  }
-
   function handleNewGame() {
     setPlayer(DEFAULT_PLAYER)
     setInventory(STARTING_ITEMS)
     setQuests([])
+    setEquipped(DEFAULT_EQUIPMENT)
+    setEquipmentInventory([])
     setGameStarted(true)
   }
 
@@ -184,10 +205,23 @@ function App() {
     setActiveQuest(null)
   }
 
-  function handleDeclineQuest() {
+  function handleDeclineNPC() {
     setActiveNPC(null)
     setActiveQuest(null)
     setShop(false)
+    setShowInn(false)
+  }
+
+  function handleRest() {
+    setPlayer(prev => ({
+      ...prev,
+      hp: prev.maxHp,
+      mp: prev.maxMp,
+      gold: prev.gold - 20,
+    }))
+    setShowInn(false)
+    setActiveNPC(null)
+    showToast('Beristirahat... HP dan MP pulih!', 'success')
   }
 
   function handleBuy(itemId, price) {
@@ -200,6 +234,11 @@ function App() {
       }
       return [...prev, { itemId, quantity: 1 }]
     })
+  }
+
+  function handleBuyEquipment(itemId, price) {
+    setPlayer(prev => ({ ...prev, gold: prev.gold - price }))
+    setEquipmentInventory(prev => [...prev, itemId])
   }
 
   function handleSellItem(itemId, sellPrice) {
@@ -222,6 +261,31 @@ function App() {
     ))
   }
 
+  function handleUseItemOutside(itemId, result) {
+    setPlayer(prev => ({ ...prev, hp: result.hp, mp: result.mp }))
+    setInventory(prev => prev.map(s =>
+      s.itemId === itemId ? { ...s, quantity: s.quantity - 1 } : s
+    ))
+    showToast(result.message, 'success')
+  }
+
+  function handleUseSpellOutside(spell, healAmt) {
+    setPlayer(prev => ({
+      ...prev,
+      hp: Math.min(prev.maxHp, prev.hp + healAmt),
+      mp: prev.mp - spell.mpCost,
+    }))
+    showToast(`${spell.name}! Pulih ${healAmt} HP!`, 'success')
+  }
+
+  function handleEquip(slot, itemId) {
+    setEquipped(prev => ({ ...prev, [slot]: itemId }))
+  }
+
+  function handleUnequip(slot) {
+    setEquipped(prev => ({ ...prev, [slot]: null }))
+  }
+
   function handleBattleEnd(result) {
     setBattle(null)
     emit('battle:end', {})
@@ -239,7 +303,7 @@ function App() {
             ? {
               ...q,
               progress: Math.min(q.progress + 1, q.targetCount),
-              completed: q.progress + 1 >= q.targetCount
+              completed: q.progress + 1 >= q.targetCount,
             }
             : q
         ))
@@ -253,10 +317,14 @@ function App() {
         setLevelUp({ gains, newLevel })
         return {
           ...prev,
-          level: newLevel, exp: newExp - needed,
-          hp: newHp + gains.hp, maxHp: prev.maxHp + gains.hp,
-          mp: newMp + gains.mp, maxMp: prev.maxMp + gains.mp,
-          atk: prev.atk + gains.atk, def: prev.def + gains.def,
+          level: newLevel,
+          exp: newExp - needed,
+          hp: newHp + gains.hp,
+          maxHp: prev.maxHp + gains.hp,
+          mp: newMp + gains.mp,
+          maxMp: prev.maxMp + gains.mp,
+          atk: prev.atk + gains.atk,
+          def: prev.def + gains.def,
           gold: newGold,
         }
       }
@@ -265,6 +333,7 @@ function App() {
     })
   }
 
+  // stats player setelah equipment bonus diterapkan
   function getEffectivePlayer() {
     const bonuses = calcEquipmentStats(equipped)
     return {
@@ -274,19 +343,6 @@ function App() {
       maxHp: player.maxHp + (bonuses.hp ?? 0),
       maxMp: player.maxMp + (bonuses.mp ?? 0),
     }
-  }
-
-  function handleEquip(slot, itemId) {
-    setEquipped(prev => ({ ...prev, [slot]: itemId }))
-  }
-
-  function handleUnequip(slot) {
-    setEquipped(prev => ({ ...prev, [slot]: null }))
-  }
-
-  function handleBuyEquipment(itemId, price) {
-    setPlayer(prev => ({ ...prev, gold: prev.gold - price }))
-    setEquipmentInventory(prev => [...prev, itemId])
   }
 
   if (!gameStarted) {
@@ -307,37 +363,56 @@ function App() {
       <NPCOverlay />
       <QuestLog quests={quests} />
 
-      {/* Tombol save */}
-      <button onClick={() => setShowSaveLoad(true)} style={{
-        position: 'absolute', top: 50, left: 12,
-        background: 'rgba(0,0,0,0.6)', border: '1px solid #444',
-        borderRadius: 4, padding: '6px 10px',
-        color: '#aaa', cursor: 'pointer',
-        fontSize: 11, zIndex: 50,
-        fontFamily: 'Courier New',
-      }}>
-        Save / Load
-      </button>
+      {!battle && (
+        <>
+          <button onClick={() => setShowSaveLoad(true)} style={toolbarBtn(12)}>
+            Save / Load
+          </button>
+          <button onClick={() => setShowItemMenu(true)} style={toolbarBtn(110)}>
+            <FaBoxOpen size={11} /> Item/Sihir
+          </button>
+          <button onClick={() => setShowEquipment(true)} style={toolbarBtn(210)}>
+            <GiBroadsword size={11} /> Equipment
+          </button>
+        </>
+      )}
 
       {battle && (
         <BattleScreen
-          monster={battle} player={getEffectivePlayer()} inventory={inventory}
-          onBattleEnd={handleBattleEnd} onInventoryChange={handleInventoryChange}
+          monster={battle}
+          player={getEffectivePlayer()}
+          inventory={inventory}
+          onBattleEnd={handleBattleEnd}
+          onInventoryChange={handleInventoryChange}
         />
       )}
+
       {levelUp && !battle && (
         <LevelUpScreen
-          gains={levelUp.gains} newLevel={levelUp.newLevel}
+          gains={levelUp.gains}
+          newLevel={levelUp.newLevel}
           onClose={() => setLevelUp(null)}
         />
       )}
-      {activeNPC && !battle && !shop && (
+
+      {activeNPC && !battle && !shop && !showInn && (
         <NPCDialog
-          npc={activeNPC} quest={activeQuest}
+          npc={activeNPC}
+          quest={activeQuest}
           onAcceptQuest={activeNPC.isMerchant ? handleAcceptShop : handleAcceptQuest}
-          onDecline={handleDeclineQuest}
+          onDecline={handleDeclineNPC}
         />
       )}
+
+      {showInn && activeNPC && !battle && (
+        <InnScreen
+          npc={activeNPC}
+          player={player}
+          onRest={handleRest}
+          onClose={() => { setShowInn(false); setActiveNPC(null) }}
+        />
+      )}
+
       {shop && !battle && (
         <ShopScreen
           playerGold={player.gold}
@@ -351,39 +426,26 @@ function App() {
           onClose={() => setShop(false)}
         />
       )}
+
       {showSaveLoad && (
         <SaveLoadScreen
-          hasSave={hasSave()} savedAt={savedAt}
-          onSave={handleSave} onLoad={handleLoad}
+          hasSave={hasSave()}
+          savedAt={savedAt}
+          onSave={handleSave}
+          onLoad={handleLoad}
           onDelete={() => { setShowSaveLoad(false); setConfirmDelete(true) }}
           onClose={() => setShowSaveLoad(false)}
         />
       )}
-      {!battle && (
-        <button onClick={() => setShowItemMenu(true)} style={{
-          position: 'absolute', top: 50, left: 110,
-          background: 'rgba(0,0,0,0.6)', border: '1px solid #444',
-          borderRadius: 4, padding: '6px 10px',
-          color: '#aaa', cursor: 'pointer',
-          fontSize: 11, zIndex: 50,
-          fontFamily: 'Courier New',
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <FaBoxOpen size={11} /> Item/Sihir
-        </button>
-      )}
-      {!battle && (
-        <button onClick={() => setShowEquipment(true)} style={{
-          position: 'absolute', top: 50, left: 210,
-          background: 'rgba(0,0,0,0.6)', border: '1px solid #444',
-          borderRadius: 4, padding: '6px 10px',
-          color: '#aaa', cursor: 'pointer',
-          fontSize: 11, zIndex: 50,
-          fontFamily: 'Courier New',
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <GiBroadsword size={11} /> Equipment
-        </button>
+
+      {showItemMenu && !battle && (
+        <ItemSpellMenu
+          player={getEffectivePlayer()}
+          inventory={inventory}
+          onUseItem={handleUseItemOutside}
+          onUseSpell={handleUseSpellOutside}
+          onClose={() => setShowItemMenu(false)}
+        />
       )}
 
       {showEquipment && !battle && (
@@ -396,15 +458,7 @@ function App() {
           onClose={() => setShowEquipment(false)}
         />
       )}
-      {showItemMenu && !battle && (
-        <ItemSpellMenu
-          player={getEffectivePlayer()}
-          inventory={inventory}
-          onUseItem={handleUseItemOutside}
-          onUseSpell={handleUseSpellOutside}
-          onClose={() => setShowItemMenu(false)}
-        />
-      )}
+
       {toast && (
         <Toast
           message={toast.message}
@@ -412,6 +466,7 @@ function App() {
           onClose={() => setToast(null)}
         />
       )}
+
       {confirmDelete && (
         <ConfirmModal
           message="Yakin ingin menghapus save file? Progress tidak bisa dikembalikan."
@@ -419,6 +474,7 @@ function App() {
           onCancel={() => setConfirmDelete(false)}
         />
       )}
+
       {!battle && (
         <Minimap
           playerTileX={position.tileX}
@@ -428,6 +484,25 @@ function App() {
       )}
     </div>
   )
+}
+
+function toolbarBtn(left) {
+  return {
+    position: 'absolute',
+    top: 50, left,
+    background: 'rgba(0,0,0,0.6)',
+    border: '1px solid #444',
+    borderRadius: 4,
+    padding: '6px 10px',
+    color: '#aaa',
+    cursor: 'pointer',
+    fontSize: 11,
+    zIndex: 50,
+    fontFamily: 'Courier New',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  }
 }
 
 export default App

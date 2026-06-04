@@ -1,114 +1,91 @@
-import { TILE_SIZE, TILES, TILE_COLORS } from "../config";
+import { TILE_SIZE } from "../config";
 
-const FENCE_COLOR = 0x8a6a3a;
-const FENCE_TOP = 0xaa8855;
-const BUILDING_WALL = 0xcc9955;
-const BUILDING_ROOF = 0x883322;
-const BUILDING_DOOR = 0x553311;
-const BUILDING_WIN = 0x88ccff;
-const FLOOR_COLOR = 0x9a7a4a;
-const ENTRANCE_COLOR = 0xc8a865;
+const COLORS = {
+  wall: 0xcc9955,
+  roof: 0x883322,
+  roofInn: 0x224488,
+  roofShop: 0x226633,
+  door: 0x553311,
+  window: 0x88ccff,
+  outline: 0x7a5533,
+  sign: 0xaa7722,
+};
 
 /**
- * Renders a village onto a Phaser Graphics object
+ * Renders building sprites inside village interior
  * @param {Phaser.GameObjects.Graphics} gfx
- * @param {object} village
+ * @param {{ col, row, w, h, type }[]} buildings
  */
-export function renderVillage(gfx, village) {
-  renderFloor(gfx, village);
-  renderFences(gfx, village);
-  renderEntrances(gfx, village);
-  renderBuildings(gfx, village);
-}
-
-function renderFloor(gfx, village) {
-  const { centerCol, centerRow, radius } = village;
-
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > radius) continue;
-
-      const px = (centerCol + dx) * TILE_SIZE;
-      const py = (centerRow + dy) * TILE_SIZE;
-
-      gfx.fillStyle(FLOOR_COLOR, 1);
-      gfx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-
-      const hash =
-        Math.abs(
-          ((centerCol + dx) * 374761393) ^ ((centerRow + dy) * 668265263),
-        ) % 10;
-      if (hash < 3) {
-        gfx.fillStyle(0x886633, 1);
-        gfx.fillRect(px + 2, py + 2, 3, 3);
-      } else if (hash < 5) {
-        gfx.fillStyle(0xbb9966, 1);
-        gfx.fillRect(px + 8, py + 9, 4, 2);
-      }
-    }
-  }
-}
-
-function renderFences(gfx, village) {
-  for (const pos of village.fencePositions) {
-    const isEntrance = village.entrances.some(
-      (e) => e.col === pos.col && e.row === pos.row,
-    );
-    if (isEntrance) continue;
-
-    const px = pos.col * TILE_SIZE;
-    const py = pos.row * TILE_SIZE;
-
-    gfx.fillStyle(FENCE_COLOR, 1);
-    gfx.fillRect(px + 1, py + 2, TILE_SIZE - 2, TILE_SIZE - 4);
-
-    gfx.fillStyle(FENCE_TOP, 1);
-    gfx.fillRect(px + 1, py + 2, TILE_SIZE - 2, 3);
-
-    gfx.fillStyle(FENCE_TOP, 1);
-    gfx.fillRect(px + 1, py + 2, 3, TILE_SIZE - 4);
-    gfx.fillRect(px + TILE_SIZE - 4, py + 2, 3, TILE_SIZE - 4);
-  }
-}
-
-function renderEntrances(gfx, village) {
-  for (const pos of village.entrances) {
-    const px = pos.col * TILE_SIZE;
-    const py = pos.row * TILE_SIZE;
-
-    gfx.fillStyle(ENTRANCE_COLOR, 1);
-    gfx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-
-    gfx.fillStyle(FENCE_TOP, 1);
-    gfx.fillRect(px + 1, py + 1, 3, TILE_SIZE - 2);
-    gfx.fillRect(px + TILE_SIZE - 4, py + 1, 3, TILE_SIZE - 2);
-  }
-}
-
-function renderBuildings(gfx, village) {
-  for (const b of village.buildings) {
+export function renderVillageInterior(gfx, buildings) {
+  for (const b of buildings) {
     const px = b.col * TILE_SIZE;
     const py = b.row * TILE_SIZE;
     const bw = b.w * TILE_SIZE;
     const bh = b.h * TILE_SIZE;
 
-    gfx.fillStyle(BUILDING_WALL, 1);
+    const roofColor =
+      b.type === "inn"
+        ? COLORS.roofInn
+        : b.type === "shop"
+          ? COLORS.roofShop
+          : COLORS.roof;
+
+    // Dinding
+    gfx.fillStyle(COLORS.wall, 1);
     gfx.fillRect(px, py, bw, bh);
 
-    gfx.fillStyle(BUILDING_ROOF, 1);
-    gfx.fillRect(px, py, bw, 5);
+    // Atap
+    gfx.fillStyle(roofColor, 1);
+    gfx.fillRect(px, py, bw, 6);
 
-    gfx.fillStyle(BUILDING_DOOR, 1);
-    gfx.fillRect(px + Math.floor(bw / 2) - 2, py + bh - 6, 5, 6);
+    // Pintu
+    gfx.fillStyle(COLORS.door, 1);
+    gfx.fillRect(px + Math.floor(bw / 2) - 3, py + bh - 7, 6, 7);
 
-    gfx.fillStyle(BUILDING_WIN, 1);
-    gfx.fillRect(px + 2, py + 6, 4, 4);
-    if (b.w > 1) {
-      gfx.fillRect(px + bw - 6, py + 6, 4, 4);
+    // Jendela kiri
+    gfx.fillStyle(COLORS.window, 1);
+    gfx.fillRect(px + 3, py + 8, 5, 5);
+
+    // Jendela kanan (kalau cukup lebar)
+    if (bw >= 32) {
+      gfx.fillRect(px + bw - 8, py + 8, 5, 5);
     }
 
-    gfx.lineStyle(1, 0x7a5533, 1);
+    // Outline
+    gfx.lineStyle(1, COLORS.outline, 1);
     gfx.strokeRect(px, py, bw, bh);
+
+    // Label tipe bangunan
+    if (b.type === "inn" || b.type === "shop") {
+      gfx.fillStyle(COLORS.sign, 1);
+      gfx.fillRect(px + Math.floor(bw / 2) - 4, py - 4, 8, 4);
+    }
+  }
+}
+
+/**
+ * Renders village as a 3x3 marker on the global map
+ * @param {Phaser.GameObjects.Graphics} gfx
+ * @param {number} centerCol
+ * @param {number} centerRow
+ */
+export function renderVillageMarker(gfx, centerCol, centerRow) {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const px = (centerCol + dx) * TILE_SIZE;
+      const py = (centerRow + dy) * TILE_SIZE;
+
+      // Tile dasar
+      gfx.fillStyle(0xd4a855, 1);
+      gfx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      // Atap rumah kecil di tengah
+      if (dx === 0 && dy === 0) {
+        gfx.fillStyle(0x883322, 1);
+        gfx.fillRect(px + 3, py + 2, 10, 5);
+        gfx.fillStyle(0xcc9955, 1);
+        gfx.fillRect(px + 4, py + 7, 8, 6);
+      }
+    }
   }
 }

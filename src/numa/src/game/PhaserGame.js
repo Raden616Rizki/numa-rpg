@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
+import { VillageScene } from "./scenes/VillageScene";
 
 let instance = null;
 
@@ -16,7 +17,7 @@ export function createPhaserGame(containerId) {
     parent: containerId,
     backgroundColor: "#0a0a1a",
     pixelArt: true,
-    scene: [BootScene],
+    scene: [BootScene, VillageScene],
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -25,4 +26,14 @@ export function createPhaserGame(containerId) {
 
   instance = new Phaser.Game(config);
   return instance;
+}
+
+/**
+ * Returns a running Phaser scene by key
+ * @param {string} key
+ * @returns {Phaser.Scene | null}
+ */
+export function getScene(key) {
+  if (!instance) return null;
+  return instance.scene.getScene(key);
 }

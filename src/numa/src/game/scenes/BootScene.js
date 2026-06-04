@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import {
+  TILES,
   TILE_SIZE,
   TILE_COLORS,
   BLOCKED_TILES,
@@ -15,10 +16,11 @@ import { drawChunkWithEdges } from "../systems/TerrainRenderer";
 import { loadGame } from "../systems/SaveSystem";
 import { hasRamp } from "../systems/RampSystem";
 import {
-  generateVillage,
+  placeVillageTiles,
+  generateVillageInterior,
   shouldHaveVillage,
 } from "../systems/VillageGenerator";
-import { renderVillage } from "../systems/VillageRenderer";
+import { renderVillageMarker } from "../systems/VillageRenderer";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -278,11 +280,12 @@ export class BootScene extends Phaser.Scene {
    */
   isWalkableFrom(fromCol, fromRow, toCol, toRow) {
     const tile = getTileAt(toCol, toRow, this.chunkCache);
+
+    if (tile === TILES.VILLAGE) return true;
     if (BLOCKED_TILES.includes(tile)) return false;
 
-    // Cek bangunan village
     for (const village of this.villages.values()) {
-      for (const b of village.buildings) {
+      for (const b of village.interior?.buildings ?? []) {
         if (
           toCol >= b.col &&
           toCol < b.col + b.w &&
@@ -350,6 +353,28 @@ export class BootScene extends Phaser.Scene {
     }
   }
 
+  enterVillage() {
+    for (const [key, village] of this.villages.entries()) {
+      const { centerCol, centerRow } = village;
+      if (
+        Math.abs(this.tileX - centerCol) <= 1 &&
+        Math.abs(this.tileY - centerRow) <= 1
+      ) {
+        this.cameras.main.fade(400, 0, 0, 0, false, (cam, progress) => {
+          if (progress === 1) {
+            emit("village:enter", {
+              villageData: village.interior,
+              fromTileX: this.tileX,
+              fromTileY: this.tileY,
+            });
+            this.scene.pause();
+          }
+        });
+        return;
+      }
+    }
+  }
+
   /**
    * @param {number} dx
    * @param {number} dy
@@ -385,6 +410,11 @@ export class BootScene extends Phaser.Scene {
       onComplete: () => {
         this.isMoving = false;
         this.updateChunks();
+
+        const currentTile = getTileAt(this.tileX, this.tileY, this.chunkCache);
+        if (currentTile === TILES.VILLAGE) {
+          this.enterVillage();
+        }
       },
     });
   }
@@ -399,18 +429,22 @@ export class BootScene extends Phaser.Scene {
     if (this.villages.has(key)) return;
     if (!shouldHaveVillage(chunkX, chunkY)) return;
 
-    const village = generateVillage(chunkX, chunkY, this.chunkCache);
-    if (!village) return;
+    const villageInfo = placeVillageTiles(chunkX, chunkY, this.chunkCache);
+    if (!villageInfo) return;
 
-    this.villages.set(key, village);
+    // Generate interior (persistent — same seed)
+    const interior = generateVillageInterior(
+      villageInfo.villageId,
+      villageInfo.centerCol,
+      villageInfo.centerRow,
+    );
+
+    this.villages.set(key, { ...villageInfo, interior });
 
     const gfx = this.add.graphics();
     gfx.setDepth(1);
-    renderVillage(gfx, village);
+    renderVillageMarker(gfx, villageInfo.centerCol, villageInfo.centerRow);
     this.villageGfx.set(key, gfx);
-
-    // Spawn NPC untuk village
-    this.spawnVillageNPCs(village);
   }
 
   /**
